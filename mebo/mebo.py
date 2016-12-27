@@ -16,15 +16,16 @@ SOUTH_WEST = 'sw'
 WEST = 'w'
 NORTH_WEST = 'nw'
 
+
 class Component:
     """ Factory class for generating classes of components
     """
 
     @classmethod
     def from_parent(cls, name, **actions):
-        """ Generates a class of the given type as a Subclass of component
+        """ Generates a class of the given type as a subclass of component
         :param name: Name of the generated class
-        :param actions: A list of action names mapped to callables from the parent
+        :param actions: A dictionary of action names->callables (closures from parent)
         """
         cls = type(name, (Component,), actions)
         return cls(actions=actions.keys())
@@ -60,9 +61,10 @@ class Mebo(object):
 
         try:
             print("Scanning for mebo...")
-            # get IP address
-            # scan netmask a la nmap, do "get_version" for that IP
-            # try get_version, set_timer_state, get_wifi_cert
+            # The mebo client on iOS appears to do something like this:
+            # 1. get IP address of machine
+            # 2. scan netmask a la nmap, do "get_version" for that IP
+            # 3. try get_version, set_timer_state, get_wifi_cert
             # break
         except Exception:
             raise MeboDiscoveryError('Unable to locate Mebo on the network?')
