@@ -1,3 +1,4 @@
+import functools
 import requests
 from .exceptions import (
     MeboDiscoveryError,
@@ -5,19 +6,12 @@ from .exceptions import (
 )
 
 
-# class MetaComponent(type):
-#
-#     def __new__(cls, name, parent):
-#         self.name = name
-
-
-class Component():
+class Component:
 
     @classmethod
-    def from_parent(cls, name, parent, **actions):
-        self = cls(name, parent, **actions)
-        for name, action in actions.iteritems():
-            setattr(self, name, action)
+    def from_parent(cls, name):
+        cls.__name__ = name
+        return cls()
 
 
 class Mebo(object):
@@ -31,6 +25,9 @@ class Mebo(object):
         else:
             self.ip = ip
         self._version = None
+        self._arm = None
+        self._wrist = None
+        self._claw = None
 
     def _discover(self):
         """
@@ -59,19 +56,19 @@ class Mebo(object):
         return resp.text
 
     def add_router(self, auth_type, ssid, password, index=1):
-        self._request('setup_wireless_save', auth=auth_type, ssid=ssid, key=password, index=index)
+        self._request(req='setup_wireless_save', auth=auth_type, ssid=ssid, key=password, index=index)
 
     def set_scan_timer(self, value=30):
-        self._request('set_scan_timer', value=value)
+        self._request(req='set_scan_timer', value=value)
 
     def restart(self):
-        self._request('restart_system')
+        self._request(req='restart_system')
 
     def set_timer_state(self, value=0):
-        self._request('set_timer_state', value=value)
+        self._request(req='set_timer_state', value=value)
 
     def get_wifi_cert(self):
-        resp = self._request('get_wifi_cert')
+        resp = self._request(req='get_wifi_cert')
         _, cert_type = resp.text.split(':')
         return cert_type.strip()
 
@@ -89,6 +86,7 @@ class Mebo(object):
         :param duration: number of milliseconds to move the robot
         """
         direction = 'move_forward' if velocity >= 0 else 'move_backward'
+        velocity = abs(velocity)
         # there is also a ts keyword that could be passed here.
         self._request(req=direction, dur=duration, value=velocity)
 
@@ -102,7 +100,12 @@ class Mebo(object):
         Usage: mebo.Mebo().claw.close(**params)
         Usage: mebo.Mebo().claw.position
         """
-        return Component.from_parent('Claw', self)
+        if self._claw is None:
+            claw = Component.from_parent('Claw')
+            claw.open = functools.partial(self._request, req='c_open')
+            claw.close = functools.partial(self._request, req='c_close')
+            self._claw = claw
+        return self._claw
 
     @property
     def wrist(self):
@@ -111,13 +114,23 @@ class Mebo(object):
         Usage: mebo.Mebo().wrist.counter_clockwise(**params)
         Usage: mebo.Mebo().wrist.position
         """
-        return Component.from_parent('Wrist', self)
+        if self._wrist is None:
+            wrist = Component.from_parent('Wrist')
+            wrist.clockwise = functools.partial(self._request, req='w_right')
+            wrist.counter_clockwise = functools.partial(self._request, req='w_left')
+            self._wrist = wrist
+        return self._wrist
 
     @property
     def arm(self):
         """
-        Usage: mebo.Mebo().arm.raise(**params)
-        Usage: mebo.Mebo().arm.lower(**params)
+        Usage: mebo.Mebo().arm.up(**params)
+        Usage: mebo.Mebo().arm.down(**params)
         Usage: mebo.Mebo().arm.position
         """
-        return Component.from_parent('Arm', self)
+        if self._arm is None:
+            arm = Component.from_parent('Arm')
+            arm.up = functools.partial(self._request, req='s_up')
+            arm.down = functools.partial(self._request, req='s_down')
+            self._arm = arm
+        return self._arm
