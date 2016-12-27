@@ -15,10 +15,10 @@ _test_image:
 	@docker build -t ${ORG}/${TEST_IMAGE} . -f Dockerfile-test
 
 test: _test_image
-	@docker run --rm -it ${ORG}/${TEST_IMAGE} py.test .
+	@docker run --rm -it -v`pwd`/test:/opt/src/test ${ORG}/${TEST_IMAGE} py.test .
 
 run:
 	@docker run --rm -it ${ORG}/${IMAGE} bash
 
 publish: build
-	# publish to pypi
+	# @docker run --rm -it ${ORG}/${BUILD_IMAGE}
