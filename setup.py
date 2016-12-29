@@ -13,10 +13,15 @@ def find_requirements(filename='requirements.txt'):
         return f.readlines()
 
 
+def readme(filename='README.md'):
+    with open(filename, 'r') as f:
+        return f.read()
+
 setup(
     name='mebo',
     version=mebo.__version__,
     description='Simple python interface to control the mebo toy robot',
+    long_description=readme(),
     author='Cameron Lane',
     author_email='crlane@adamanteus.com',
     url='https://github.com/crlane/python-mebo',
@@ -32,7 +37,7 @@ setup(
 
         # Indicate who your project is intended for
         'Intended Audience :: Education',
-        'Topic :: Scientific/Engineering :: Human Machine Interfaces'
+        'Topic :: Scientific/Engineering :: Human Machine Interfaces',
         # Pick your license as you wish (should match "license" above)
         'License :: OSI Approved :: MIT License',
 

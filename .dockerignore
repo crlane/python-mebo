@@ -1,0 +1,28 @@
+.vagrant
+
+# git
+.git
+.gitignore
+
+# CI
+.travis.yml
+
+# Docker
+docker-compose.yml
+.docker
+.dockerignore
+Dockerfile*
+
+# C
+*.so
+
+# Make
+Makefile
+
+# Vim
+[._]*.s[a-w][a-z]
+[._]s[a-w][a-z]
+*.un~
+Session.vim
+.netrwhist
+*~

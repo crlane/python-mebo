@@ -1,0 +1,21 @@
+language: python
+
+python:
+  - "3.6"
+
+services:
+  - docker
+
+before_install:
+  - make image
+
+install:
+  - pip install python-coveralls
+
+script:
+  - make test
+
+after_success:
+  - make build
+  # - make deploy
+  - coveralls

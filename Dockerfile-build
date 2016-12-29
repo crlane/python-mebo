@@ -1,0 +1,6 @@
+FROM crlane/python-mebo
+
+RUN pip install -r build_requirements.txt
+RUN python setup.py sdist bdist_wheel --universal
+
+ENTRYPOINT twine upload -u $PYPI_USER -p $PYPI_PASSWORD dist/*
