@@ -13,7 +13,7 @@ def find_requirements(filename='requirements.txt'):
         return f.readlines()
 
 
-def readme(filename='README.md'):
+def readme(filename='README.rst'):
     with open(filename, 'r') as f:
         return f.read()
 
