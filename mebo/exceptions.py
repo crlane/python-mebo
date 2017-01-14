@@ -14,5 +14,9 @@ class MeboConnectionError(MeboError):
     pass
 
 
+class MeboConfigurationError(MeboError):
+    pass
+
+
 class MeboDiscoveryError(MeboError):
     pass
