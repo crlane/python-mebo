@@ -10,4 +10,6 @@ script:
   - make test
 
 after_success:
-  - make deploy
+  - if [ "$TRAVIS_BRANCH" == "master" ]; then
+      make publish
+    fi
