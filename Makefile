@@ -36,5 +36,5 @@ run:
 publish: _deploy_image
 	@docker run --rm -e PYPI_PASSWORD=${PYPI_PASSWORD} -e PYPI_USER=${PYPI_USER} ${ORG}/${BUILD_IMAGE}
 	@docker tag ${ORG}/${IMAGE} ${ORG}/${IMAGE}:${VERSION}
-	@docker login -u=${DOCKER_LOGIN} -p=${DOCKER_PASSWORD}
+	@docker login -u=${DOCKER_USERNAME} -p=${DOCKER_PASSWORD}
 	@docker push ${ORG}/${IMAGE}:${VERSION}
