@@ -85,7 +85,7 @@ class Mebo(object):
         :param ip: The ip address to probe for the mebo API
         :returns: The response object from the HTTP request
         """
-        return self._session.get('http://{}/get_version'.format(ip))
+        return self._session.get('http://{}/?req=get_version'.format(ip))
 
     def _get_broadcast(self, address='', timeout=10):
         """ Attempts to receive the UDP broadcast signal from Mebo
@@ -119,23 +119,47 @@ class Mebo(object):
             broadcast = self._get_broadcast(addr)
             api_response = self._probe(broadcast.ip)
             api_response.raise_for_status()
+            print('Mebo found at {}'.format(broadcast.ip))
             return broadcast.ip
         except (socket.timeout, HTTPError):
-            raise MeboDiscoveryError('Unable to locate Mebo on the network. Make sure it is powered and connected to LAN')
+            raise MeboDiscoveryError(('Unable to locate Mebo on the network.\n'
+                                      '\tMake sure it is powered on and connected to LAN.\n'
+                                      '\tIt may be necessary to power cycle the Mebo.'))
 
     def _request(self, **params):
+        """ private function to submit HTTP requests to Mebo's API
+
+        :param params: arguments to pass as query params to the Mebo API. Might
+        also include `need_response`, a kwarg dictating whether the caller
+        requires the response object from the API.
+
+        :returns: The `requests.HTTPResponse` object if `need_response` is True, `None` otherwise.
+        """
+        try:
+            need_response = params.pop('need_response')
+        except KeyError:
+            # by default, don't return a response
+            need_response = False
         try:
             response = self._session.get(self._endpoint, params=params)
             response.raise_for_status()
-            return response
+            if need_response:
+                return response
         except (ConnectionError, HTTPError) as e:
             raise MeboRequestError('Request to Mebo failed: {}'.format(str(e)))
 
-    def router_list(self):
-        resp = self._request('get_rt_list')
+    def visible_networks(self):
+        """ Retrives list of wireless networks visible to Mebo.
+
+        :returns: A string of XML containing the currently available wireless networks
+        """
+        resp = self._request(req='get_rt_list', need_response=True)
         return resp.text
 
     def add_router(self, auth_type, ssid, password, index=1):
+        """
+        Save a wireless network to the Mebo's list of routers
+        """
         self._request(req='setup_wireless_save', auth=auth_type, ssid=ssid, key=password, index=index)
 
     def set_scan_timer(self, value=30):
@@ -148,25 +172,35 @@ class Mebo(object):
         self._request(req='set_timer_state', value=value)
 
     def get_wifi_cert(self):
-        resp = self._request(req='get_wifi_cert')
+        resp = self._request(req='get_wifi_cert', need_response=True)
         _, cert_type = resp.text.split(':')
         return cert_type.strip()
 
     def get_boundary_position(self):
-        resp = self._request(req='get_boundary_position')
-        return resp
+        """ Gets boundary positions for 4 axes:
+
+        Arm: s_up, s_down
+        Claw: c_open, c_close
+        Wrist Rotation: w_left & w_right
+        Wrist Elevation: h_up, h_down
+
+        :returns: dictionary of functions to boundary positions
+        """
+        resp = self._request(req='get_boundary_position', need_response=True)
+        _, key_value_string = [s.strip() for s in resp.text.split(':')]
+        return dict((k, int(v)) for k, v in [ks.strip().split('=') for ks in key_value_string.split('&')])
 
     @property
     def version(self):
         if not self._version:
-            resp = self._request(req='get_version')
+            resp = self._request(req='get_version', need_response=True)
             _, version = resp.text.split(':')
             self._version = version.strip()
         return self._version
 
     def move(self, direction, speed, duration):
         """
-        :param direction: map direction to move. 'n', 'ne', 'nw'
+        :param direction: map direction to move. 'n', 'ne', 'nw', etc.
         :param speed: a value in the range [0, 255].
         :param duration: number of milliseconds the wheels should spin
         """
@@ -218,8 +252,14 @@ class Mebo(object):
     @property
     def wrist(self):
         """
-        Usage: mebo.Mebo().wrist.clockwise(**params)
-        Usage: mebo.Mebo().wrist.counter_clockwise(**params)
+        Usage: Mebo().wrist.rotate_right(**params)
+        Usage: Mebo().wrist.rotate_left(**params)
+        Usage: Mebo().wrist.inch_right(**params)
+        Usage: Mebo().wrist.inch_left(**params)
+        Usage: Mebo().wrist.rotate_stop()
+        Usage: Mebo().wrist.up()
+        Usage: Mebo().wrist.down()
+        Usage: Mebo().wrist.lift_stop()
         """
         if self._wrist is None:
             wrist = Component.from_parent(
@@ -228,10 +268,10 @@ class Mebo(object):
                 inch_right=partial(self._request, req='inch_w_right'),
                 rotate_left=partial(self._request, req='w_left'),
                 inch_left=partial(self._request, req='inch_w_left'),
-                stop=partial(self._request, req='w_stop'),
+                rotate_stop=partial(self._request, req='w_stop'),
                 up=partial(self._request, req='h_up'),
                 down=partial(self._request, req='h_down'),
-                stop_=partial(self._request, req='h_stop'),
+                lift_stop=partial(self._request, req='h_stop'),
             )
             self._wrist = wrist
         return self._wrist
