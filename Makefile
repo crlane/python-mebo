@@ -4,7 +4,7 @@ TEST_IMAGE ?= ${IMAGE}-test
 BUILD_IMAGE ?= ${IMAGE}-build
 DEV_IMAGE ?= ${IMAGE}-dev
 
-VERSION_FILE ?= ./mebo/__init__.py
+VERSION_FILE ?= mebo/__init__.py
 VERSION ?= $(shell grep -E -o '\d+.\d+.\d+(.dev\d+)?' ${VERSION_FILE})
 
 .PHONY: image publish build _test_image test run _dev_image dev _deploy_image publish
