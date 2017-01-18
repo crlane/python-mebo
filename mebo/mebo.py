@@ -55,6 +55,9 @@ class Mebo(object):
     # port used by mebo to broadcast its presence
     BROADCAST_PORT = 51110
 
+    # port used to establish media (RTSP) sessions
+    RTSP_PORT = 6667
+
     def __init__(self, ip=None, broadcast=None, network=None):
         """ Initializes a Mebo robot object
 
@@ -103,6 +106,9 @@ class Mebo(object):
             s.settimeout(timeout)
             data, source = s.recvfrom(4096)
             return Broadcast(source[0], source[1], data)
+
+    def _get_stream(self, address, timeout=10):
+        pass
 
     def _discover(self, network):
         """
