@@ -15,6 +15,9 @@ from .exceptions import (
     MeboRequestError,
     MeboConfigurationError
 )
+from .rtsp import (
+    RTSPSession
+)
 
 Broadcast = namedtuple('Broadcast', ['ip', 'port', 'data'])
 
@@ -108,7 +111,9 @@ class Mebo(object):
             return Broadcast(source[0], source[1], data)
 
     def _get_stream(self, address, timeout=10):
-        pass
+        r = RTSPSession('rtsp://{}/streamhd/'.format(self._ip), self.RTSP_PORT)
+        resp = r.options()
+        return resp
 
     def _discover(self, network):
         """
