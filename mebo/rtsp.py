@@ -1,8 +1,4 @@
-from asyncio import (
-    coroutine,
-    open_connection,
-    get_event_loop,
-)
+import socket
 
 from urllib.parse import urlsplit
 
@@ -26,6 +22,11 @@ class RTSPRequest:
             'Accept': 'application/sdp'
          }
 
+    @property
+    def raw_text(self):
+        string = '\r\n'.join(self.text())
+        return bytes(string.encode('utf-8'))
+
     def text(self):
         yield self._command
         for k, v in self.headers.items():
@@ -47,52 +48,29 @@ class RTSPSession:
         scheme, host, path, _, _ = urlsplit(url)
         self.host = host
         self.port = port or 554  # port 554 is default
-        self._loop = get_event_loop()
-        self._loop.run_forever()
-        self.reader, self.writer = self._connect()
+        self._socket = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
+        self._socket.connect((self.host, self.port))
 
-    def __enter__(self):
-        return self
-
-    def __exit__(self, *args):
-        self._close()
-
-    async def _connect(self):
-        r, w = await open_connection(self.host, self.port, loop=self._loop)
-        return r, w
-
-    def _close():
-        self.reader.close()
-        self.writer.close()
-        self._loop.stop()
-        self._loop.close()
-
-    async def _parse_headers(self)
-        while True:
-            line = await self.reader.readline()
-            if not line: 
-                # all headers processed, done
-                break
-            yield line.decode('ascii').rstrip()
-
-    async def _parse_response(self):
-        line = await self.reader.readline()
-            
-    async def _request(self, request):
-        self.writer.writelines(request.text)
+    def _request(self, request):
+        self._socket.send(request.raw_text)
+        self._socket.settimeout(10)
         resp = RTSPResponse(request)
-        response = await self._parse_response()
-        async for header in self._parse_headers():
-            resp.headers.update([(k.strip(), v.strip()) for k, v in header.split(:)])
-
+        while True:
+            text = self._socket.recv(4096) 
+            if not text:
+                break
+            lines = text.split('\r\n')
+            resp.body.append(lines)
         return resp
 
     def options(self, **kwargs):
-        req = RTSPRequest(self.url, 'OPTIONS', **kwargs)
-        self._request(req)
+        # req = RTSPRequest(self.url, 'OPTIONS', **kwargs)
+        # return self._request(req)
+        raise NotImplementedError('Mebo RTSP server does not implement this')
 
     def describe(self, **kwargs):
-        pass
+        req = RTSPRequest(self.url, 'DESCRIBE', **kwargs)
+        return self._request(req)
 
     def setup(self, **kwargs):
         pass
