@@ -27,10 +27,10 @@ test: _test_image
 	@docker run --rm -it -e PYTHONDONTWRITEBYTECODE=1 -v`pwd`:/opt/src ${ORG}/${TEST_IMAGE}
 
 dev: _dev_image
-	@docker run --rm -it ${ORG}/${DEV_IMAGE}
+	@docker run --rm -it --net=host ${ORG}/${DEV_IMAGE}
 
 run:
-	@docker run --rm -it --net host ${ORG}/${IMAGE} bash
+	@docker run --rm -it --net=host ${ORG}/${IMAGE} bash
 
 # deploy to PyPI, tag the version, and push to dockerhub
 publish: _deploy_image
