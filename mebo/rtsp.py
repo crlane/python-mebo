@@ -1,10 +1,16 @@
+import re
 import socket
 
+from collections import namedtuple
 from urllib.parse import urlsplit
 
-from mebo import __version__ as version
+StatusLine = namedtuple('StatusLine', ['protocol', 'status_code', 'reason'])
 
 PROTOCOL_VERSION = 'RTSP/1.0'
+
+
+class RTSPMediaError(Exception):
+    pass
 
 
 class RTSPRequest:
@@ -15,12 +21,23 @@ class RTSPRequest:
         self._command = ' '.join([method, url, PROTOCOL_VERSION])
         self.headers.update(**headers)
 
+        self._username = 'stream'
+        self._realm = 'realm'
+        self._cnonce = 4428977
+        self._nc = 1
+        self._response = '91b3cd804ec214aeaebfcf51306a093a'
+        self._opaque = ''
+
     @property
     def headers(self):
-        return { 
-            'User-Agent': 'python-mebo v{}'.format(version),
-            'Accept': 'application/sdp'
-         }
+        return {
+            'User-Agent': 'com.skyrocket.srtmebo',
+            'Accept': 'application/sdp',
+            'CSeq': 1
+        }
+
+    def authorization(self, nonce):
+        f'Digest username="{self._username}",realm="{self._realm}",nonce="{nonce}",uri={self.url},cnonce="{self._cnonce}",nc={self._nc},qop=,response="{self._response}",opaque="{self._opaque}"'
 
     @property
     def raw_text(self):
@@ -29,17 +46,80 @@ class RTSPRequest:
 
     def text(self):
         yield self._command
-        for k, v in self.headers.items():
-            yield '{}: {}'.format(k, v)
+        for header, value in self.headers.items():
+            yield f'{header}: {value}'
+        yield '\r\n'
 
 
 class RTSPResponse:
+    '''Represents responses for RTSP Negotiation
 
-    def __init__(self, request):
+    Clones much of the behavior of the requests' HTTPResponse object
+    '''
+
+    def __init__(self, request, text, encoding='utf-8'):
         self.request = request
-        self.status = []
-        self.headers = {}
-        self.body = []
+        self._raw = text
+
+        self.encoding = encoding
+        self.fallback = 'ascii'
+
+        self._headers = {}
+        self._status_line = None
+
+    def __iter__(self):
+        return self.iter_lines()
+
+    def iter_lines(self):
+        return (l.decode(self.encoding) for l in self._raw.splitlines())
+
+    @property
+    def lines(self):
+        return list(self.iter_lines())
+
+    @property
+    def content(self):
+        return self._raw
+
+    @property
+    def text(self):
+        try:
+            return self.content.decode(self.encoding)
+        except UnicodeDecodeError:
+            return self.content.decode(self.fallback)
+
+    @property
+    def _status(self):
+        if self._status_line is None:
+            self._status_line = StatusLine(*self.lines[0].split())
+        return self._status_line
+
+    @property
+    def headers(self):
+        if not self._headers:
+            for line in self.lines[1:]:
+                if not line:
+                    break
+                header, value = re.split(r':\s?', line)
+                self._headers[header] = value
+        return self._headers
+
+    @property
+    def reason(self):
+        return self._status.reason
+
+    @property
+    def status_code(self):
+        return int(self._status.status_code)
+
+    @property
+    def protocol(self):
+        return self._status.protocol
+
+    @property
+    def body(self):
+        return self.lines[-1]
+
 
 class RTSPSession:
 
@@ -50,18 +130,17 @@ class RTSPSession:
         self.port = port or 554  # port 554 is default
         self._socket = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
         self._socket.connect((self.host, self.port))
+        self._session_id = None
 
     def _request(self, request):
-        self._socket.send(request.raw_text)
-        self._socket.settimeout(10)
-        resp = RTSPResponse(request)
-        while True:
-            text = self._socket.recv(4096) 
-            if not text:
-                break
-            lines = text.split('\r\n')
-            resp.body.append(lines)
-        return resp
+        bytes_sent = self._socket.send(request.raw_text)
+        assert bytes_sent
+        try:
+            response = self._socket.recv(4096)
+            print(response)
+            return RTSPResponse(request, response)
+        except Exception as e:
+            raise RTSPMediaError(f'Unable to establish session {e}!')
 
     def options(self, **kwargs):
         # req = RTSPRequest(self.url, 'OPTIONS', **kwargs)
@@ -70,7 +149,12 @@ class RTSPSession:
 
     def describe(self, **kwargs):
         req = RTSPRequest(self.url, 'DESCRIBE', **kwargs)
-        return self._request(req)
+        resp = self._request(req)
+        if resp.status_code == 401:
+            digest = req.headers.get('WWW-Authenticate')
+            return self._request(RTSPRequest(self.url, 'DESCRIBE', **{'Authorization': digest}))
+        else:
+            return resp
 
     def setup(self, **kwargs):
         pass

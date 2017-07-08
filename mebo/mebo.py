@@ -18,7 +18,7 @@ from .exceptions import (
     MeboConfigurationError
 )
 
-from .rtsp import (
+from mebo.rtsp import (
     RTSPSession,
 )
 
@@ -33,10 +33,11 @@ SOUTH_WEST = 'sw'
 WEST = 'w'
 NORTH_WEST = 'nw'
 
+
 def _test():
-    m = Mebo(network='192.168.1.0/24')
-    sess = RTSPSession('rtsp://{}/streamhd/'.format(m._ip), port=6667)
+    m = Mebo(network='10.69.1.0/24')
     return m, sess
+
 
 class Component:
     """ Factory class for generating classes of components
@@ -92,6 +93,17 @@ class Mebo(object):
         self._claw = None
         self._speaker = None
 
+        self._rtsp_session = None
+
+    @property
+    def ip(self):
+        return self._ip
+
+    @property
+    def media(self):
+        if self._rtsp_session is None:
+            self._rtsp_session = RTSPSession(f'rtsp://{self.ip}/streamhd/', port=self.RTSP_PORT)
+        return self._rtsp_session
 
     def _probe(self, ip):
         """ Checks the given IPv4 address for Mebo HTTP API functionality.
@@ -130,12 +142,12 @@ class Mebo(object):
         self._request(req='set_resolution', value='720p')
         self._request(req='set_resolution', value='720p', speed=1)
         self._request(req='set_resolution', value='720p', speed=2)
-        self._request(req='set_video_qp', value=42) 
-        self._request(req='set_video_qp', value=42, speed=1) 
-        self._request(req='set_video_qp', value=42, speed=2) 
-        self._request(req='set_video_framerate', value=20) 
-        self._request(req='set_video_framerate', value=20, speed=1) 
-        self._request(req='set_video_framerate', value=20, speed=2) 
+        self._request(req='set_video_qp', value=42)
+        self._request(req='set_video_qp', value=42, speed=1)
+        self._request(req='set_video_qp', value=42, speed=2)
+        self._request(req='set_video_framerate', value=20)
+        self._request(req='set_video_framerate', value=20, speed=1)
+        self._request(req='set_video_framerate', value=20, speed=2)
 
     def _get_stream(self, address, timeout=10):
         pass
