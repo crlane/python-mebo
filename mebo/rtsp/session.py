@@ -1,17 +1,23 @@
+import logging
+import os
 import random
 import socket
+import sys
 
 from urllib.parse import urlsplit
 
 from mebo.auth import response as gen_digest_response
 
 from mebo.rtsp.models import (
-    RTSPMediaError,
     RTSPResponse,
     RTSPRequest,
 )
 
 from mebo.rtsp import PROTOCOL_VERSION
+
+logger = logging.getLogger(__name__)
+loglevel = getattr(logging, os.getenv('LOGLEVEL', 'INFO').upper())
+logging.basicConfig(stream=sys.stdout, level=loglevel)
 
 
 class RTSPSession:
@@ -60,10 +66,10 @@ class RTSPSession:
         cnonce = f'cnonce="{self._cnonce}"'
         qop = 'qop='
         response = f'response="{self.digest_response(resp.nonce, resp.request.method)}"'
-        print(f'Got authorization response: {response}')
+        logger.debug(f'Got authorization response: {response}')
         opaque = 'opaque=""'
         msg = ','.join([username, realm, nonce, uri, nc, cnonce, qop, response, opaque])
-        print(msg)
+        logger.debug(f'Message for challenge generated: {msg}')
         return msg
 
     def _challenge(self, resp):
@@ -93,12 +99,12 @@ class RTSPSession:
         return RTSPRequest(method, url, protocol, **h)
 
     def _request(self, request, challenge=True):
-        print(f'Request sent: {request.raw_text}')
+        logger.debug(f'Request sent: {request.raw_text}')
         bytes_sent = self._socket.send(request.raw_text)
         try:
             assert bytes_sent
             response = self._socket.recv(4096)
-            print(f'Response received: {response}')
+            logger.debug(f'Response received: {response}')
             resp = RTSPResponse(request, response)
             if resp.status_code == 200:
                 return resp
