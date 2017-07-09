@@ -18,7 +18,7 @@ from .exceptions import (
     MeboConfigurationError
 )
 
-from mebo.rtsp import (
+from mebo.rtsp.session import (
     RTSPSession,
 )
 
@@ -32,11 +32,6 @@ SOUTH = 's'
 SOUTH_WEST = 'sw'
 WEST = 'w'
 NORTH_WEST = 'nw'
-
-
-def _test():
-    m = Mebo(network='10.69.1.0/24')
-    return m, sess
 
 
 class Component:
@@ -102,7 +97,14 @@ class Mebo(object):
     @property
     def media(self):
         if self._rtsp_session is None:
-            self._rtsp_session = RTSPSession(f'rtsp://{self.ip}/streamhd/', port=self.RTSP_PORT)
+            url = f'rtsp://{self.ip}/streamhd/'
+            self._rtsp_session = RTSPSession(
+                url,
+                port=self.RTSP_PORT,
+                username='stream',
+                realm='realm',
+                user_agent='python-mebo'
+            )
         return self._rtsp_session
 
     def _probe(self, ip):
