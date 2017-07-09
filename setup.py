@@ -17,6 +17,7 @@ def readme(filename='README.rst'):
     with open(filename, 'r') as f:
         return f.read()
 
+
 setup(
     name='mebo',
     version=mebo.__version__,
@@ -28,12 +29,16 @@ setup(
     packages=find_packages(exclude=['contrib', 'docs', 'test*']),
     install_requires=find_requirements(),
     license='MIT',
+    extras_require={
+        'testing': find_requirements('test_requirements.txt'),
+        'development': ['ipython', 'ipdb']
+    },
     classifiers=[
         # How mature is this project? Common values are
         #   3 - Alpha
         #   4 - Beta
         #   5 - Production/Stable
-        'Development Status :: 2 - Pre-Alpha',
+        'Development Status :: 3 - Alpha',
 
         # Indicate who your project is intended for
         'Intended Audience :: Education',
