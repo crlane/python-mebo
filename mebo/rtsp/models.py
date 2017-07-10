@@ -11,9 +11,8 @@ class RTSPRequest:
     def __init__(self, method, url, protocol, **headers):
         self.url = url
         self.method = method
-        self._headers = None
+        self._headers = headers
         self._command = ' '.join([method, url, protocol])
-        self.headers.update(**headers)
 
     @property
     def headers(self):
@@ -93,7 +92,7 @@ class RTSPResponse:
             for line in self.lines[1:]:
                 if not line:
                     break
-                header, value = re.split(r':\s?', line)
+                header, value = re.split(r':\s?', line, maxsplit=1)
                 self._headers[header] = value
         return self._headers
 
@@ -111,7 +110,7 @@ class RTSPResponse:
 
     @property
     def body(self):
-        return self.lines[-1]
+        return self.text.rpartition('\r\n\r\n')[-1]
 
 
 class RTSPMediaError(Exception):
