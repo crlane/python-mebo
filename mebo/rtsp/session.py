@@ -1,6 +1,7 @@
 import logging
 import os
 import random
+import re
 import socket
 import sys
 
@@ -22,6 +23,8 @@ from mebo.rtsp import PROTOCOL_VERSION
 logger = logging.getLogger(__name__)
 loglevel = getattr(logging, os.getenv('LOGLEVEL', 'INFO').upper())
 logging.basicConfig(stream=sys.stdout, level=loglevel)
+
+SERVER_PORTS = re.compile(r'server_port=(?P<server_rtp>\d{4,5})-(?P<server_rtcp>\d{4,5})')
 
 
 class RTSPSession:
@@ -47,15 +50,16 @@ class RTSPSession:
         self._cnonce = None
         self._nc = 1
         self._opaque = ''
-        self._cseq = 1
-        self._session_id = None
+        self._cseq = 2
 
         # private sockets for rtsp
         self._socket = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
         self._socket.connect((self.host, self.port))
 
-        # rtp stream
-        self.rtp_stream = None
+        # rtp info
+        self._session_id = None
+        self.audio_stream = None
+        self.video_stream = None
 
     def digest_response(self, nonce, method):
         # HACK: they have a weird extra space at the end
@@ -109,37 +113,59 @@ class RTSPSession:
     def _request(self, request, challenge=True):
         logger.debug('Request sent: %s', request.raw_text)
         bytes_sent = self._socket.send(request.raw_text)
-        try:
-            assert bytes_sent
-            response = self._socket.recv(4096)
-            logger.debug('Response received: %s', response)
-            resp = RTSPResponse(request, response)
-            if resp.status_code == 200:
-                return resp
-            elif resp.status_code == 401 and challenge:
-                return self._challenge(resp)
-            else:
-                raise RTSPSessionError('Unable to complete digest challenge')
-        finally:
-            self._cseq += 1
+        assert bytes_sent
+        response = self._socket.recv(4096)
+        logger.debug('Response received: %s', response)
+        resp = RTSPResponse(request, response)
+        if resp.status_code == 200:
+            return resp
+        elif resp.status_code == 401 and challenge:
+            return self._challenge(resp)
+        else:
+            raise RTSPSessionError('Unable to complete digest challenge')
+
+    def _init_server_stream(self, stream, transmission_header):
+        match = SERVER_PORTS.search(transmission_header)
+        if not match:
+            raise Exception('No server_ports found!')
+        server_port, server_rtcp = map(int, match.groups())
+        logger.debug('SERVER PORT for RTP: %d', server_port)
+        stream.connect(self.host, server_port)
+        stream.connect(self.host, server_rtcp, control=True)
+        assert stream.send(RTPStream.START_BYTES)
 
     def start_streams(self):
+
         desc = self.describe()
-        if desc.status_code == 200:
-            self.audio_stream = RTPStream(desc.body)
-            self.video_stream = RTPStream(desc.body)
-            logger.debug('RTP streams established')
+        self._cseq += 1
+        logger.debug('SDP: %s', desc.body)
+        self.video_stream = RTPStream(desc.body)
+        self.audio_stream = RTPStream(desc.body)
 
         audio_options = f'RTP/AVP;unicast;client_port={self.audio_stream.media_port}-{self.audio_stream.rtcp_port}'
         video_options = f'RTP/AVP;unicast;client_port={self.video_stream.media_port}-{self.video_stream.rtcp_port}'
 
-        setup_track_0 = self.setup(urljoin(self.url, 'track0'), **{'Transport': video_options})
-        assert setup_track_0.status_code == 200
-        setup_track_1 = self.setup(urljoin(self.url, 'track0'), **{'Transport': audio_options})
-        assert setup_track_1.status_code == 200
-        self._session_id = setup_track_1.headers.pop('Session')
+        video_track = self.setup(urljoin(self.url, 'track0'), **{'Transport': video_options})
+        print(f'Video Track body: {video_track.lines}')
+        assert video_track.status_code == 200
+        self._init_server_stream(self.video_stream, video_track.headers.get('Transport'))
+        self._session_id = video_track.headers.pop('Session')
+
+        audio_track = self.setup(urljoin(self.url, 'track1'), **{'Transport': audio_options, 'Session': self._session_id})
+        logger.debug('Audio Track body: %s', audio_track.lines)
+        self._cseq += 1
+        assert audio_track.status_code == 200
+        self._init_server_stream(self.audio_stream, audio_track.headers.get('Transport'))
+        assert self._session_id == audio_track.headers.pop('Session')
+
         play_response = self.play(**{'Session': self._session_id, 'Range': 'npt=0.000-'})
+        logger.debug('RTP streams established: %s', play_response)
         assert play_response.status_code == 200
+        self._cseq += 1
+        logger.debug('Play response: %s', play_response.lines)
+
+        self.audio_stream.capture('audio_stream.pcap', packets=500)
+        self.video_stream.capture('video_stream.pcap', packets=500)
 
     def options(self, **kwargs):
         # req = RTSPRequest(self.url, 'OPTIONS', **kwargs)
@@ -155,7 +181,7 @@ class RTSPSession:
         return self._request(req)
 
     def play(self, **kwargs):
-        req = self._request_factory('PLAY', self.url, **{'Session': self._session_id, 'Range': 'npt=0.000-'})
+        req = self._request_factory('PLAY', self.url, **{'Session': self._audio_session_id, 'Range': 'npt=0.000-'})
         return self._request(req)
 
     def pause(self, **kwargs):
