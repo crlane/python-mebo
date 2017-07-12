@@ -62,17 +62,13 @@ class RTSPSession:
         self.video_stream = None
 
     def digest_response(self, nonce, method):
-        # HACK: they have a weird extra space at the end
-        # url_correction = self.url + ' '
-        url_correction = self.url
-        return gen_digest_response(nonce, self._username, self._realm, self._password, method, url_correction)
+        return gen_digest_response(nonce, self._username, self._realm, self._password, method, self.url)
 
     def _authorization(self, resp):
         assert resp.nonce
         username = f'Digest username="{self._username}"'
         realm = f'realm="{self._realm}"'
         nonce = f'nonce="{resp.nonce}"'
-        # uri = f'uri="{self.url + " "}"'
         uri = f'uri="{self.url}"'
         nc = f'nc={self._nc:0>8}'
         cnonce = f'cnonce="{self._cnonce}"'
@@ -146,7 +142,7 @@ class RTSPSession:
         video_options = f'RTP/AVP;unicast;client_port={self.video_stream.media_port}-{self.video_stream.rtcp_port}'
 
         video_track = self.setup(urljoin(self.url, 'track0'), **{'Transport': video_options})
-        print(f'Video Track body: {video_track.lines}')
+        logger.debug('Video Track body: %s', video_track.lines)
         assert video_track.status_code == 200
         self._init_server_stream(self.video_stream, video_track.headers.get('Transport'))
         self._session_id = video_track.headers.pop('Session')
@@ -181,7 +177,7 @@ class RTSPSession:
         return self._request(req)
 
     def play(self, **kwargs):
-        req = self._request_factory('PLAY', self.url, **{'Session': self._audio_session_id, 'Range': 'npt=0.000-'})
+        req = self._request_factory('PLAY', self.url, **{'Session': self._session_id, 'Range': 'npt=0.000-'})
         return self._request(req)
 
     def pause(self, **kwargs):
