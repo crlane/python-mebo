@@ -1,30 +1,28 @@
 import logging
-import os
 import random
-import re
 import socket
-import sys
 
 from urllib.parse import urlsplit, urljoin
 
-from mebo.auth import response as gen_digest_response
+from mebo.stream.auth import challenge_response
 
-from mebo.rtsp.rtp import (
+from mebo.stream.rtp import (
     RTPStream
 )
 
-from mebo.rtsp.models import (
+from mebo.stream.sdp import (
+    SDP
+)
+
+
+from mebo.stream.rtsp import (
     RTSPResponse,
     RTSPRequest,
 )
 
-from mebo.rtsp import PROTOCOL_VERSION
+from mebo.stream import PROTOCOL_VERSION
 
 logger = logging.getLogger(__name__)
-loglevel = getattr(logging, os.getenv('LOGLEVEL', 'INFO').upper())
-logging.basicConfig(stream=sys.stdout, level=loglevel)
-
-SERVER_PORTS = re.compile(r'server_port=(?P<server_rtp>\d{4,5})-(?P<server_rtcp>\d{4,5})')
 
 
 class RTSPSession:
@@ -50,7 +48,7 @@ class RTSPSession:
         self._cnonce = None
         self._nc = 1
         self._opaque = ''
-        self._cseq = 2
+        self._cseq = 1
 
         # private sockets for rtsp
         self._socket = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
@@ -62,7 +60,7 @@ class RTSPSession:
         self.video_stream = None
 
     def digest_response(self, nonce, method):
-        return gen_digest_response(nonce, self._username, self._realm, self._password, method, self.url)
+        return challenge_response(nonce, self._username, self._realm, self._password, method, self.url)
 
     def _authorization(self, resp):
         assert resp.nonce
@@ -120,48 +118,40 @@ class RTSPSession:
         else:
             raise RTSPSessionError('Unable to complete digest challenge')
 
-    def _init_server_stream(self, stream, transmission_header):
-        match = SERVER_PORTS.search(transmission_header)
-        if not match:
-            raise Exception('No server_ports found!')
-        server_port, server_rtcp = map(int, match.groups())
-        logger.debug('SERVER PORT for RTP: %d', server_port)
-        stream.connect(self.host, server_port)
-        stream.connect(self.host, server_rtcp, control=True)
-        assert stream.send(RTPStream.START_BYTES)
-
     def start_streams(self):
 
         desc = self.describe()
         self._cseq += 1
         logger.debug('SDP: %s', desc.body)
-        self.video_stream = RTPStream(desc.body)
-        self.audio_stream = RTPStream(desc.body)
+        self.sdp = SDP(desc.body)
+        self.streams = [RTPStream(media_desc, host=self.host) for media_desc in self.sdp.media]
 
-        audio_options = f'RTP/AVP;unicast;client_port={self.audio_stream.media_port}-{self.audio_stream.rtcp_port}'
-        video_options = f'RTP/AVP;unicast;client_port={self.video_stream.media_port}-{self.video_stream.rtcp_port}'
+        for stream in self.streams:
+            extra_headers = {'Transport': stream.transport}
+            if self._session_id is not None:
+                extra_headers.update({'Session': self._session_id})
+            track = self.setup(urljoin(self.url, stream.name), **extra_headers)
+            assert track.status_code == 200
+            logger.debug('%s response body: %s', stream.name, track.lines)
+            track_id = track.headers.get('Session')
+            logger.debug('Track session id: %s', track_id)
+            if self._session_id is None:
+                self._session_id = track_id
+            elif self._session_id != track_id:
+                logger.warning('Got an extra session id: %s', self._session_id)
+            self._cseq += 1
+            stream.setup(track.headers.get('Transport'))
 
-        video_track = self.setup(urljoin(self.url, 'track0'), **{'Transport': video_options})
-        logger.debug('Video Track body: %s', video_track.lines)
-        assert video_track.status_code == 200
-        self._init_server_stream(self.video_stream, video_track.headers.get('Transport'))
-        self._session_id = video_track.headers.pop('Session')
+        logger.debug('RTP streams established: %s', self.streams)
 
-        audio_track = self.setup(urljoin(self.url, 'track1'), **{'Transport': audio_options, 'Session': self._session_id})
-        logger.debug('Audio Track body: %s', audio_track.lines)
-        self._cseq += 1
-        assert audio_track.status_code == 200
-        self._init_server_stream(self.audio_stream, audio_track.headers.get('Transport'))
-        assert self._session_id == audio_track.headers.pop('Session')
+        if self.streams:
+            play_response = self.play(**{'Session': self._session_id, 'Range': 'npt=0.000-'})
+            assert play_response.status_code == 200
+            self._cseq += 1
+            logger.debug('Play response: %s', play_response.lines)
 
-        play_response = self.play(**{'Session': self._session_id, 'Range': 'npt=0.000-'})
-        logger.debug('RTP streams established: %s', play_response)
-        assert play_response.status_code == 200
-        self._cseq += 1
-        logger.debug('Play response: %s', play_response.lines)
-
-        self.audio_stream.capture('audio_stream.pcap', packets=500)
-        self.video_stream.capture('video_stream.pcap', packets=500)
+        for stream in self.streams:
+            stream.capture(f'{stream.sdp}.pcap', packets=100)
 
     def options(self, **kwargs):
         # req = RTSPRequest(self.url, 'OPTIONS', **kwargs)
@@ -181,10 +171,10 @@ class RTSPSession:
         return self._request(req)
 
     def pause(self, **kwargs):
-        pass
+        raise NotImplementedError
 
     def record(self, **kwargs):
-        pass
+        raise NotImplementedError
 
 
 class RTSPSessionConfigurationError(Exception):

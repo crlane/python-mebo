@@ -1,3 +1,4 @@
+import logging
 import socket
 import time
 
@@ -18,9 +19,12 @@ from .exceptions import (
     MeboConfigurationError
 )
 
-from mebo.rtsp.session import (
+from mebo.stream.session import (
     RTSPSession,
 )
+
+
+logging.getLogger(__name__)
 
 Broadcast = namedtuple('Broadcast', ['ip', 'port', 'data'])
 
