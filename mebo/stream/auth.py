@@ -23,7 +23,7 @@ def ha2(method, uri):
     return _hash(_combine(method, uri))
 
 
-def response(nonce, username, realm, password, method, uri):
+def challenge_response(nonce, username, realm, password, method, uri):
     """ Calculates the challenge response for digest authentication. Detials are
     available here: https://tools.ietf.org/html/rfc2617
 

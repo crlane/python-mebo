@@ -3,6 +3,12 @@ import socket
 import random
 import re
 
+from mebo.stream.decode import (
+    RTPPacket,
+    RTPDecodeError
+)
+
+
 logger = logging.getLogger(__name__)
 
 MAX_TRIES = 3
@@ -81,9 +87,18 @@ class RTPStream:
         with open(filename, 'wb') as f:
             for i in range(packets):
                 logger.debug('Blocking and waiting for packets on %s', self.media_port)
-                packet = self._media.recv(4096)
-                logger.debug('Packet received with %d bytes', len(packet))
+                raw_packet = self._media.recv(4096)
+                logger.debug('Raw packet received: %d', len(raw_packet))
+                rtp = RTPPacket(raw_packet)
+                if self.sdp.name == 'video':
+                    try:
+                        decoded = rtp.decode()
+                        f.write(decoded)
+                    except RTPDecodeError as e:
+                        logger.error('Unable to decode packet: %s', e)
+                    continue
+                logger.debug('Packet received with %d bytes', len(rtp))
                 if not i % 5:
-                    logger.debug('Packet: %s', packet)
-                f.write(packet)
+                    logger.debug('Packet: %s', rtp)
+                f.write(rtp)
         logger.debug('Capture complete for %s', filename)

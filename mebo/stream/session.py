@@ -151,7 +151,8 @@ class RTSPSession:
             logger.debug('Play response: %s', play_response.lines)
 
         for stream in self.streams:
-            stream.capture(f'{stream.sdp}.pcap', packets=100)
+            ext = 'h264' if stream.sdp.name == 'video' else '.au'
+            stream.capture(f'{stream.sdp}.{stream.sdp.control}.{ext}', packets=4000)
 
     def options(self, **kwargs):
         # req = RTSPRequest(self.url, 'OPTIONS', **kwargs)
@@ -171,6 +172,9 @@ class RTSPSession:
         return self._request(req)
 
     def pause(self, **kwargs):
+        raise NotImplementedError
+
+    def teardown(self, **kwargs):
         raise NotImplementedError
 
     def record(self, **kwargs):
