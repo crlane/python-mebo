@@ -13,9 +13,9 @@ def _combine(*args, encoding='utf-8'):
 
 def ha1(username, realm, password=None):
     if password is None:
-        # The password has been discovered, but I'm not publishing it
-        # for security reasons. Talking to skyrocket about soon.
         password = os.getenv('STREAM_PASSWORD')
+    if not password:
+        raise Exception('supply stream password')
     return _hash(_combine(username, realm, password))
 
 

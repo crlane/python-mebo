@@ -26,16 +26,18 @@ class RTPStream:
     def choose_port(start=50000, end=60000):
         return random.randrange(start, end, 2)
 
-    def __init__(self, sdp, host=None, timeout=25):
+    def __init__(self, sdp, host=None, timeout=15):
         self.sdp = sdp
         self.host = host or self.sdp.host_info
         self.name = self.sdp.control
 
         self._media = socket.socket(socket.AF_INET, socket.SOCK_DGRAM)
         self._media.setsockopt(socket.SOL_SOCKET, socket.SO_REUSEADDR, 1)
+        self.server_port = None
 
         self._rtcp = socket.socket(socket.AF_INET, socket.SOCK_DGRAM)
         self._rtcp.setsockopt(socket.SOL_SOCKET, socket.SO_REUSEADDR, 1)
+        self.server_rtcp = None
 
         self._media.settimeout(timeout)
         self._rtcp.settimeout(timeout)
@@ -47,7 +49,7 @@ class RTPStream:
                 self._rtcp.bind(('', self.rtcp_port))
                 break
             except Exception as e:
-                print(f'Failed to bind: {e}')
+                logger.error('Failed to bind: %s', e)
                 tries += 1
         else:
             raise Exception('Unable to bind port')
@@ -62,17 +64,14 @@ class RTPStream:
         match = SERVER_PORTS.search(transport_header)
         if not match:
             raise Exception('No server_ports found!')
-        server_port, server_rtcp = map(int, match.groups())
-        logger.debug('Server port for RTP on %s: %d', self.name, server_port)
-        logger.debug('Server port for RTCP on %s: %d', self.name, server_rtcp)
-        with socket.socket(socket.AF_INET, socket.SOCK_DGRAM) as s:
-            s.setsockopt(socket.SOL_SOCKET, socket.SO_REUSEADDR, 1)
-            s.connect((self.host, server_port))
-            assert s.send(self.START_BYTES)
+        self.server_port, self.server_rtcp = map(int, match.groups())
+        logger.debug('Server port for RTP on %s: %d', self.name, self.server_port)
+        logger.debug('Server port for RTCP on %s: %d', self.name, self.server_rtcp)
+        assert self._media.sendto(self.START_BYTES, (self.host, self.server_port))
 
     @property
     def transport(self):
-        # could eventually get unicast info from stream itself
+        # could eventually get unicast info from stream itself maybe
         return f'{self.sdp.profile};unicast;client_port={self.media_port}-{self.rtcp_port}'
 
     @property
@@ -86,9 +85,7 @@ class RTPStream:
     def capture(self, filename, seconds=None, bytes=None, packets=1000):
         with open(filename, 'wb') as f:
             for i in range(packets):
-                logger.debug('Blocking and waiting for packets on %s', self.media_port)
                 raw_packet = self._media.recv(4096)
-                logger.debug('Raw packet received: %d', len(raw_packet))
                 rtp = RTPPacket(raw_packet)
                 if self.sdp.name == 'video':
                     try:
@@ -97,8 +94,6 @@ class RTPStream:
                     except RTPDecodeError as e:
                         logger.error('Unable to decode packet: %s', e)
                     continue
-                logger.debug('Packet received with %d bytes', len(rtp))
-                if not i % 5:
-                    logger.debug('Packet: %s', rtp)
-                f.write(rtp)
+                else:
+                    f.write(rtp)
         logger.debug('Capture complete for %s', filename)
