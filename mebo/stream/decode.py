@@ -69,7 +69,7 @@ class RTPDecodeError(Exception):
 class RTPPacket:
 
     def __init__(self, packet):
-        self.raw_bytes = memoryview(packet)
+        self.raw = memoryview(packet)
         self.byte_offset = 0
         self.version = 0
         self.padding = 0
@@ -84,16 +84,11 @@ class RTPPacket:
         self.header_length = None
         self.header_contents = None
 
-    def decode(self, codec='h264', packetization_mode=1):
-        """ This routine takes a UDP packet, i.e. a string of bytes and ..
-        (a) strips off the RTP header
-        (b) adds NAL "stamps" to the packets, so that they are recognized as NAL's
-        (c) Concantenates frames
-        (d) Returns a packet that can be written to disk as such and that is recognized by stock media players as h264 stream
-        """
-        # this is the sequence of four bytes that identifies a NAL packet.. must be in front of every NAL packet.
-        startbytes = b'\x00\x00\x00\x01'
+    @property
+    def bytes(self):
+        return self.raw.tobytes()
 
+    def parse_header(self):
         # The first 8-bytes represent the RTP header value
         # the header format can be found from:
         # https://en.wikipedia.org/wiki/Real-time_Transport_Protocol
@@ -130,7 +125,7 @@ class RTPPacket:
         # the first 12 bytes we'll pack into three, 32-bit unsigned ints
         # then use bit shifting/twiddling to get the parts we want
         # consumes the first 12 bytes or 96 bits
-        standard_header = self.raw_bytes[:12]
+        standard_header = self.raw[:12]
         self.byte_offset += 12
 
         meta, self.timestamp, self.ssrc = struct.unpack('!III', standard_header)
@@ -143,7 +138,7 @@ class RTPPacket:
         if self.version != 2:
             raise RTPDecodeError(f'Unknown version {self.version} error!')
         self.padding = (first_16 >> 13) & 1  # third bit
-        self.extension = (first_16 >> 12) & 1 # fourth bit
+        self.extension = (first_16 >> 12) & 1  # fourth bit
         self.contributors = first_16 & ((1 << 4) - 1)   # bits 5-8
         self.marker = first_16 & (1 << 7)  # bit 9
 
@@ -151,24 +146,49 @@ class RTPPacket:
 
         if self.contributors:
             orig_offset = self.byte_offset
-            self.byte_offset += 4 * self.contributors
-            self.contributing_sources = struct.unpack('!I' * self.contributors, self.raw_bytes[orig_offset: self.byte_offset])
+            self.byte_offset += (4 * self.contributors)
+            struct_mask = ''.join(['!', 'I' * self.contributors])
+            self.contributing_sources = struct.unpack(struct_mask, self.raw[orig_offset: self.byte_offset])
             logger.debug("CRSC identifiers: %s", [f'{csrc:x}' for csrc in self.contributing_sources])
 
         if self.extension:
             # these are unsigned 16-bit integers 'H' in struct unpack land
             orig_offset = self.byte_offset
             self.byte_offset += 2
-            self.header_id = struct.unpack('!H', self.raw_bytes[orig_offset: self.byte_offset])
+            self.header_id = struct.unpack('!H', self.raw[orig_offset: self.byte_offset])
 
             orig_offset = self.byte_offset
             self.byte_offset += 2
-            self.header_length = struct.unpack('!H', self.raw_bytes[orig_offset: self.byte_offset])
+            self.header_length = struct.unpack('!H', self.raw[orig_offset: self.byte_offset])
             logger.debug('Extended header id (%d) with length %d', self.header_id, self.header_length)
 
             orig_offset = self.byte_offset
             self.byte_offset += (4 * self.header_length)
-            self.header_contents = self.raw_bytes[orig_offset: self.byte_offset]
+            self.header_contents = self.raw[orig_offset: self.byte_offset]
+
+
+    def decode(self, media_type):
+        self.parse_header()
+        if media_type == 'video':
+            return self._decode_video()
+        elif media_type == 'audio':
+            return self._decode_audio()
+        else:
+            raise ValueError(f'Unknown sdp media type {media_type}')
+
+    def _decode_audio(self, code='g711a'):
+        """ Writes out everything after the header """
+        return self.raw[self.byte_offset:]
+
+    def _decode_video(self, codec='h264', packetization_mode=1):
+        """ This routine takes a UDP packet, i.e. a string of bytes and ..
+        (a) strips off the RTP header
+        (b) adds NAL "stamps" to the packets, so that they are recognized as NAL's
+        (c) Concantenates frames
+        (d) Returns a packet that can be written to disk as such and that is recognized by stock media players as h264 stream
+        """
+        # this is the sequence of four bytes that identifies a NAL packet.. must be in front of every NAL packet.
+        startbytes = b'\x00\x00\x00\x01'
 
         # OK, all of the header has been consumed.
         # now we enter the NAL packet, as described here:
@@ -218,7 +238,7 @@ class RTPPacket:
         Other bytes: [... VIDEO FRAGMENT DATA...]
         """
 
-        self.NAL = self.raw_bytes[self.byte_offset]
+        self.NAL = self.raw[self.byte_offset]
         self.f = (self.NAL & 0x80) >> 7  # bit 1, forbidden bit. Should be 0
         self.nri = (self.NAL & 0x60) >> 5  # bit 2-3, NAL ref IDC
         self.fragment_type = self.NAL & 0x1F  # ((1 << 5) - 1)
@@ -239,7 +259,7 @@ class RTPPacket:
             else:
                 logger.debug(">>>>> PPS packet")
             # .. notice here that we include the NAL starting sequence "startbytes" and the "First byte"
-            return startbytes + self.raw_bytes[self.byte_offset:]
+            return startbytes + self.raw[self.byte_offset:]
 
         else:
             self.byte_offset += 1
@@ -247,7 +267,7 @@ class RTPPacket:
         # let's go to "Second byte"
         # ********* WE ARE AT THE "Second byte" ************
         # The "Type" here is most likely 28, i.e. "FU-A"
-        second_byte = self.raw_bytes[self.byte_offset]
+        second_byte = self.raw[self.byte_offset]
         self.start = (second_byte & 0x80) >> 7  # 128
         self.end = (second_byte & 0x40) >> 6  # 64
         self.reserved = (second_byte & 0x20) >> 5  # 32
@@ -273,4 +293,4 @@ class RTPPacket:
             logger.debug('<<<<< STAP_A NALType: (%d), decoding', self.fragment_type)
         elif self.fragment_type == NALType.FU_A:  # This code only handles "Type"  =  28, i.e. "FU-A"
             logger.debug('<<<<< FU_A NALType: (%d), decoding', self.fragment_type)
-        return head + self.raw_bytes[self.byte_offset:]
+        return head + self.raw[self.byte_offset:]

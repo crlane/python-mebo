@@ -40,7 +40,7 @@ class RTPStream:
         self.server_rtcp = None
 
         self._media.settimeout(timeout)
-        self._rtcp.settimeout(timeout)
+        # self._rtcp.settimeout(timeout)
 
         tries = 0
         while tries < MAX_TRIES:
@@ -83,17 +83,17 @@ class RTPStream:
         return self.media_port + 1
 
     def capture(self, filename, seconds=None, bytes=None, packets=1000):
+        capture_count = 0
         with open(filename, 'wb') as f:
             for i in range(packets):
                 raw_packet = self._media.recv(4096)
                 rtp = RTPPacket(raw_packet)
-                if self.sdp.name == 'video':
-                    try:
-                        decoded = rtp.decode()
-                        f.write(decoded)
-                    except RTPDecodeError as e:
-                        logger.error('Unable to decode packet: %s', e)
+                try:
+                    decoded = rtp.decode(self.sdp.name)
+                    f.write(decoded)
+                except RTPDecodeError as e:
+                    logger.error('Unable to decode packet: %s', e)
                     continue
-                else:
-                    f.write(rtp)
-        logger.debug('Capture complete for %s', filename)
+                capture_count += 1
+        logger.debug('Captured %d packets in %s', capture_count, filename)
+        return capture_count

@@ -1,6 +1,7 @@
 import logging
 import random
 import socket
+import threading
 
 from urllib.parse import urlsplit, urljoin
 
@@ -150,9 +151,11 @@ class RTSPSession:
             self._cseq += 1
             logger.debug('Play response: %s', play_response.lines)
 
-        for stream in self.streams:
-            ext = 'h264' if stream.sdp.name == 'video' else '.au'
-            stream.capture(f'{stream.sdp}.{stream.sdp.control}.{ext}', packets=4000)
+            for stream in self.streams:
+                ext = 'h264' if stream.sdp.name == 'video' else 'g711a'
+                name = f'{stream.sdp}.{stream.sdp.control}.{ext}'
+                t = threading.Thread(name=f'{stream.sdp.name}-thread', target=stream.capture, args=(name,), kwargs=dict(packets=4000))
+                t.start()
 
     def options(self, **kwargs):
         # req = RTSPRequest(self.url, 'OPTIONS', **kwargs)
