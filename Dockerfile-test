@@ -2,4 +2,4 @@ FROM crlane/python-mebo
 
 RUN pip install -r test_requirements.txt
 RUN pip install -e .
-CMD py.test .
+CMD py.test mebo

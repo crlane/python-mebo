@@ -39,7 +39,7 @@ def challenge_response(nonce, username, realm, password, method, uri):
     >>> method = 'DESCRIBE'
     >>> uri = 'rtsp://172.16.1.107/streamhd/ '
     >>> expected_response = '91b3cd804ec214aeaebfcf51306a093a'
-    >>> calculated_response = response(nonce, username, realm, None, method, uri)
+    >>> calculated_response = challenge_response(nonce, username, realm, None, method, uri)
     >>> assert calculated_response == expected_response
     """
     h1 = ha1(username, realm, password)

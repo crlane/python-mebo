@@ -40,7 +40,7 @@ class RTPStream:
         self.server_rtcp = None
 
         self._media.settimeout(timeout)
-        # self._rtcp.settimeout(timeout)
+        self._rtcp.settimeout(timeout)
 
         tries = 0
         while tries < MAX_TRIES:
