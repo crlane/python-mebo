@@ -7,7 +7,13 @@ DEV_IMAGE ?= ${IMAGE}-dev
 VERSION_FILE ?= mebo/__init__.py
 VERSION ?= $(shell grep -E -o '[0-9]+.[0-9]+.[0-9]+(.dev[0-9]+)?' ${VERSION_FILE})
 
-all: base test
+all: base clean test
+
+.IGNORE: clean
+
+clean:
+	@rm -r *.egg-info
+	@find . -iname '*.pyc' -delete
 
 .PHONY: version
 version:
@@ -31,15 +37,18 @@ _deploy_image: base
 
 .PHONY: test
 test: _test_image
-	@docker run --rm -it -e PYTHONDONTWRITEBYTECODE=1 -v`pwd`:/opt/src ${ORG}/${TEST_IMAGE}
+	@docker run --rm -it -e PYTHONDONTWRITEBYTECODE=1 -e STREAM_PASSWORD=${STREAM_PASSWORD} -v`pwd`:/opt/src ${ORG}/${TEST_IMAGE}
 
 .PHONY: dev
 dev: _dev_image
-	@docker run --rm -it ${ORG}/${DEV_IMAGE}
+	@docker run --rm -it --net=host ${ORG}/${DEV_IMAGE}
 
 .PHONY: run
 run:
-	@docker run --rm -it --net host ${ORG}/${IMAGE} bash
+	@docker run --rm -it --net=host ${ORG}/${IMAGE} bash
+
+tc:
+	@python test_capture.py
 
 # deploy to PyPI, tag the version, and push to dockerhub
 .PHONY: publish

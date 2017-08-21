@@ -1,4 +1,6 @@
+import logging
 import socket
+import time
 
 from collections import namedtuple
 from functools import partial
@@ -9,12 +11,20 @@ from requests.exceptions import (
     HTTPError
 )
 
+
 from .exceptions import (
     MeboCommandError,
     MeboDiscoveryError,
     MeboRequestError,
     MeboConfigurationError
 )
+
+from mebo.stream.session import (
+    RTSPSession,
+)
+
+
+logging.getLogger(__name__)
 
 Broadcast = namedtuple('Broadcast', ['ip', 'port', 'data'])
 
@@ -55,6 +65,9 @@ class Mebo(object):
     # port used by mebo to broadcast its presence
     BROADCAST_PORT = 51110
 
+    # port used to establish media (RTSP) sessions
+    RTSP_PORT = 6667
+
     def __init__(self, ip=None, broadcast=None, network=None):
         """ Initializes a Mebo robot object
 
@@ -78,6 +91,25 @@ class Mebo(object):
         self._wrist = None
         self._claw = None
         self._speaker = None
+
+        self._rtsp_session = None
+
+    @property
+    def ip(self):
+        return self._ip
+
+    @property
+    def media(self):
+        if self._rtsp_session is None:
+            url = f'rtsp://{self.ip}/streamhd/'
+            self._rtsp_session = RTSPSession(
+                url,
+                port=self.RTSP_PORT,
+                username='stream',
+                realm='realm',
+                user_agent='python-mebo'
+            )
+        return self._rtsp_session
 
     def _probe(self, ip):
         """ Checks the given IPv4 address for Mebo HTTP API functionality.
@@ -103,6 +135,28 @@ class Mebo(object):
             s.settimeout(timeout)
             data, source = s.recvfrom(4096)
             return Broadcast(source[0], source[1], data)
+
+    def _setup_video_stream(self):
+        self._request(req='feedback_channel_init')
+        self._request(req='set_video_gop', value=40)
+        self._request(req='set_date', value=time.time())
+        self._request(req='set_video_gop', value=40, speed=1)
+        self._request(req='set_video_gop', value=40, speed=2)
+        self._request(req='set_video_bitrate', value=600)
+        self._request(req='set_video_bitrate', value=600, speed=1)
+        self._request(req='set_video_bitrate', value=600, speed=2)
+        self._request(req='set_resolution', value='720p')
+        self._request(req='set_resolution', value='720p', speed=1)
+        self._request(req='set_resolution', value='720p', speed=2)
+        self._request(req='set_video_qp', value=42)
+        self._request(req='set_video_qp', value=42, speed=1)
+        self._request(req='set_video_qp', value=42, speed=2)
+        self._request(req='set_video_framerate', value=20)
+        self._request(req='set_video_framerate', value=20, speed=1)
+        self._request(req='set_video_framerate', value=20, speed=2)
+
+    def _get_stream(self, address, timeout=10):
+        pass
 
     def _discover(self, network):
         """
