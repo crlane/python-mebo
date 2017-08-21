@@ -1,5 +1,6 @@
 FROM crlane/python-mebo
 
+ENV STREAM_PASSWORD $STREAM_PASSWORD
 RUN pip install -r test_requirements.txt
 RUN pip install -e .
 CMD py.test mebo

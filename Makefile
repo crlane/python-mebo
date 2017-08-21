@@ -9,7 +9,13 @@ VERSION ?= $(shell grep -E -o '\d+.\d+.\d+(.dev\d+)?' ${VERSION_FILE})
 
 .PHONY: image publish build _test_image test run _dev_image dev _deploy_image publish
 
-all: base test
+all: base clean test
+
+.IGNORE: clean
+
+clean:
+	@rm -r *.egg-info
+	@find . -iname '*.pyc' -delete
 
 base:
 	@docker build -t ${ORG}/${IMAGE} .
@@ -24,13 +30,16 @@ _deploy_image: base
 	@docker build -t ${ORG}/${BUILD_IMAGE} . -f Dockerfile-build
 
 test: _test_image
-	@docker run --rm -it -e PYTHONDONTWRITEBYTECODE=1 -v`pwd`:/opt/src ${ORG}/${TEST_IMAGE}
+	@docker run --rm -it -e PYTHONDONTWRITEBYTECODE=1 -e STREAM_PASSWORD=${STREAM_PASSWORD} -v`pwd`:/opt/src ${ORG}/${TEST_IMAGE}
 
 dev: _dev_image
 	@docker run --rm -it --net=host ${ORG}/${DEV_IMAGE}
 
 run:
 	@docker run --rm -it --net=host ${ORG}/${IMAGE} bash
+
+tc:
+	@python test_capture.py
 
 # deploy to PyPI, tag the version, and push to dockerhub
 publish: _deploy_image
