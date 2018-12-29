@@ -5,11 +5,25 @@ import time
 from collections import namedtuple
 from functools import partial
 from ipaddress import IPv4Network
+
+import netifaces
+
 from requests import Session
 from requests.exceptions import (
     ConnectionError,
     HTTPError
 )
+
+from zeroconf import ServiceBrowser, Zeroconf
+
+class MeboMDNSListener:
+
+    def remove_service(self, zeroconf, type, name):
+        print("Service %s removed" % (name,))
+
+    def add_service(self, zeroconf, type, name):
+        info = zeroconf.get_service_info(type, name)
+        print("Service %s added, service info: %s" % (name, info))
 
 
 from .exceptions import (
@@ -75,15 +89,17 @@ class Mebo(object):
         :param network: IPv4 subnet in cidr block notation as a string. Ex: '192.168.1.0/24'
         """
         self._session = Session()
-        self._network = None
         self._ip = None
 
         if ip:
             self._ip = ip
-        elif ip is None and network:
-            self._ip = self._discover(network)
         else:
-            raise MeboConfigurationError('Must supply either an ip or subnet to find mebo')
+            try:
+                self._ip = self._discover()
+            except Exception as e:
+                raise MeboConfigurationError(
+                    f'Unable to autodiscover mebo ip from mDNS, please enter ip or network info. {e}'
+                )
 
         self._endpoint = 'http://{}'.format(self._ip)
         self._version = None
@@ -119,7 +135,10 @@ class Mebo(object):
         """
         return self._session.get('http://{}/?req=get_version'.format(ip))
 
-    def _get_broadcast(self, address='', timeout=10):
+    # TODO: rip this out, or change it to a hearbeat
+    # listener which gets established, this has nothing to do with discovery
+    # instead, use mdn
+    def _get_broadcast(self, address, timeout=10):
         """ Attempts to receive the UDP broadcast signal from Mebo
         on the supplied address. Raises an exception if no data is received
         before 'timeout' seconds.
@@ -130,10 +149,12 @@ class Mebo(object):
         :returns: A Broadcast object that containing the source IP, port, and data received.
         :raises: `socket.timeout` if no data is received before `timeout` seconds
         """
+        print(f"reading from: {address}:{Mebo.BROADCAST_PORT}")
         with socket.socket(socket.AF_INET, socket.SOCK_DGRAM) as s:
             s.bind((address, Mebo.BROADCAST_PORT))
             s.settimeout(timeout)
             data, source = s.recvfrom(4096)
+            print(f"Data received: {data}:{source}")
             return Broadcast(source[0], source[1], data)
 
     def _setup_video_stream(self):
@@ -158,7 +179,19 @@ class Mebo(object):
     def _get_stream(self, address, timeout=10):
         pass
 
-    def _discover(self, network):
+    def _get_mdns(self, key="_camera._tcp.local."):
+        try:
+            zeroconf = Zeroconf()
+            listener = MeboMDNSListener()
+            browser = ServiceBrowser(zeroconf, key, listener)
+            time.sleep(1)
+            for name, record in browser.services.items():
+                info = zeroconf.get_service_info(record.key, record.alias)
+                return info.properties[b'ip'].decode('ascii')
+        finally:
+            zeroconf.close()
+
+    def _discover(self):
         """
         Runs the discovery scan to find Mebo on your LAN
 
@@ -168,13 +201,11 @@ class Mebo(object):
         """
         try:
             print('Looking for Mebo...')
-            self._network = IPv4Network(network)
-            addr = self._network.broadcast_address.compressed
-            broadcast = self._get_broadcast(addr)
-            api_response = self._probe(broadcast.ip)
+            ip = self._get_mdns()
+            api_response = self._probe(ip)
             api_response.raise_for_status()
-            print('Mebo found at {}'.format(broadcast.ip))
-            return broadcast.ip
+            print('Mebo found at {}'.format(ip))
+            return ip
         except (socket.timeout, HTTPError):
             raise MeboDiscoveryError(('Unable to locate Mebo on the network.\n'
                                       '\tMake sure it is powered on and connected to LAN.\n'

@@ -1,1 +1,2 @@
-requests
+requests==2.21.0
+zeroconf==0.21.3
