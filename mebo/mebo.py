@@ -6,8 +6,6 @@ from collections import namedtuple
 from functools import partial
 from ipaddress import IPv4Network
 
-import netifaces
-
 from requests import Session
 from requests.exceptions import (
     ConnectionError,
@@ -238,6 +236,7 @@ class Mebo(object):
 
         :returns: A string of XML containing the currently available wireless networks
         """
+        # TODO: parse the XML string and print something nice
         resp = self._request(req='get_rt_list', need_response=True)
         return resp.text
 

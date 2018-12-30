@@ -26,6 +26,7 @@ Some basic usage is below. The API will change and no documentation exists, but 
     # dur is the value taken by the API. I'll clean it up soon - values < 1000 ms don't work
     m.claw.open(dur=1000) 
 
+
 Development
 -----------
 
@@ -42,7 +43,7 @@ Todo
 ~~~~
 
 * [X] Connect and control robot functions
-* [ ] Discover the IP of mebo automatically?
+* [X] Discover the IP of mebo automatically?
 * [ ] Cleaner API (better subclasses, kwargs for component methods, no metaprogramming)
 * [ ] Clean up kwargs inconsistency
 * [ ] Documentation
