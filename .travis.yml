@@ -2,12 +2,12 @@ language: python
 
 python:
   - "3.6"
-
-services:
-  - docker
+  - "3.7"
 
 script:
-  - make test
+  - pip install -r requirements.txt
+  - pip install .
+  - py.test
 
 after_success:
   - if [[ ( "$TRAVIS_BRANCH" == "master" ) && ( "$TRAVIS_PULL_REQUEST" == "false" ) ]]; then

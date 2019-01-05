@@ -1,5 +1,7 @@
+"""Deal with SDP body from the RTSP session creation"""
 
 class Media:
+    """A media stream"""
 
     def __init__(self, name, port, profile, payload_type, **kwargs):
         self.name = name
@@ -19,7 +21,6 @@ class SDP:
     This class represents and SDP Payload.
 
     Example sdp:
-
     v=0
     o=- 1 1 IN IP4 127.0.0.1
     s=Test

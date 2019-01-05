@@ -1,4 +1,4 @@
-pytest
-pytest-cov
-coverage
-python-coveralls
+coverage==4.5.2
+pytest==4.0.2
+pytest-cov==2.6.0
+Sphinx==1.8.3

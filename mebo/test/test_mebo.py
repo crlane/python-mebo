@@ -1,6 +1,6 @@
 import pytest
 
-from mebo.mebo import Component
+from mebo.robot import ComponentFactory
 
 
 @pytest.mark.parametrize(
@@ -9,7 +9,7 @@ from mebo.mebo import Component
     ]
 )
 def test_component_factory(component, actions, expected):
-    c = Component.from_parent(component, **actions)
+    c = ComponentFactory._from_parent(component, **actions)
     assert c.__class__.__name__ == component
     assert c.actions == actions.keys()
     assert c.bar() == expected
