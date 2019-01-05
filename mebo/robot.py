@@ -49,6 +49,7 @@ SOUTH = 's'
 SOUTH_WEST = 'sw'
 WEST = 'w'
 NORTH_WEST = 'nw'
+DIRECTIONS = {NORTH, NORTH_EAST, EAST, SOUTH_EAST, SOUTH, SOUTH_WEST, WEST, NORTH_WEST}
 
 
 class _MeboMDNSListener:
@@ -87,6 +88,7 @@ class Component(ABC):
     def __repr__(self):
         return '<{} actions={}>'.format(self.__class__, self.actions)
 
+
 class Mebo:
     """Mebo represents a single physical robot"""
 
@@ -96,7 +98,7 @@ class Mebo:
     # port used to establish media (RTSP) sessions
     RTSP_PORT = 6667
 
-    def __init__(self, ip=None, network=None, auto_connect=False):
+    def __init__(self, ip=None, auto_connect=False):
         """Initializes a Mebo robot object and establishes an http connection
 
         If no ip or network is supplied, then we will autodiscover the mebo using mDNS.
