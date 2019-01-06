@@ -27,8 +27,8 @@ Session.vim
 .netrwhist
 *~
 
-__pycache__
+__pycache__/*
 *.pyc
 
-
 docs/_build
+*.pcap
