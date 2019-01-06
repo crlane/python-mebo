@@ -1,29 +1,38 @@
-===========
-python-mebo
-===========
+mebo
+----
 
-This is a library to control the [Mebo robot](http://meborobot.com/) with Python. I'm releasing it, but it's still very much a work in progress.
+Mebo is a python package to control the `Mebo Robot <https://meborobot.com>`_ with Python. It is currently in active development, so there might be breaking changes. Some basic usage is defined below, but more extensive `documentation is available at ReadTheDocs <https://python-mebo.readthedocs.io/en/latest/>`_.
+
+.. note::
+    This project is not associated with the official Mebo project or its owners, Skyrocket LLC.
+
+.. note::
+
+    This package and the associated modules have been tested on Mebo version 1 *only*.
+
 
 Installation
 ---------------
 
-``pip install mebo``
+.. code:: 
+
+   pip install mebo
 
 
 
-Usage
---------
 
-Some basic usage is below. The API will change and no documentation exists, but it works for getting started.
+Quickstart
+----------
+
+Some basic usage is below. The API will change and limited documentation exists, but it works for getting started.
 
 .. code:: python
-    from mebo.mebo import Mebo
-    # autodiscover the mebo robot on your local network using mDNS
-    m = Mebo() 
-    # supported directions ('n', 'ne', 'e', 'se', 's', 'sw', 'w', 'nw',)
-    # dur is the value taken by the API
-    m.move('n', speed=255, dur=1000) 
-    m.claw.open(dur=1000) 
+
+    from mebo import Mebo
+    m = Mebo(auto_connect=True) # discover and connect automatically!
+    m.move('n', speed=255, dur=1000)  # move forward at max speed for 1 second
+    m.arm.up(dur=1000) # move the arm up for one second
+    m.claw.open(dur=1000) # open the claw for one second
 
 
 Development
@@ -31,19 +40,32 @@ Development
 
 Requirements:
 ~~~~~~~~~~~~~
-* Docker
-* make
+* python >= 3.6
 
-See Makefile for instructions commands. To build image and run tests:
+To get started with the project:
 
-``make``
+.. code:: 
+
+    git clone https://github.com/crlane/python-mebo.git
+    python -m venv mebo-venv
+    . mebo-venv/bin/actvate
+    pip install -r requirements.txt
+    pip install -e .
+
+To run the tests:
+
+.. code::
+
+    pip install -r test_requirements.txt
+    py.test
 
 Todo
 ~~~~
 
 * [ ] Cleaner API (better subclasses, kwargs for component methods, no metaprogramming)
 * [ ] Clean up kwargs inconsistency
-* [ ] Documentation
-* [ ] Tests
+* [ ] Better documentation
+* [ ] Better tests
 * [ ] Media stream (multithreading or asyncio, http with <video> tag)
+
 

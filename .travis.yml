@@ -1,12 +1,14 @@
 dist: xenial
 language: python
 
+services:
+  - docker
+
 python:
   - "3.6"
   - "3.7"
 
 install:
-  - pip install -r requirements.txt
   - pip install .
 
 script:
@@ -14,6 +16,9 @@ script:
   - py.test
 
 after_success:
+  - make build
+  - make test
+  - make docs
   - if [[ ( "$TRAVIS_BRANCH" == "master" ) && ( "$TRAVIS_PULL_REQUEST" == "false" ) ]]; then
     make publish;
     fi

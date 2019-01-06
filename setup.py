@@ -1,11 +1,15 @@
 #!/usr/bin/env python
-
-import mebo
-
+import os
 from setuptools import (
     setup,
     find_packages
 )
+
+# NOTE: thanks @kennethreitz for the inspiration here. ;)
+here = os.path.abspath(os.path.dirname(__file__))
+about = {}
+with open(os.path.join(here, 'mebo', '__version__.py'), 'r') as f:
+    exec(f.read(), about)
 
 
 def find_requirements(filename='requirements.txt'):
@@ -17,18 +21,18 @@ def readme(filename='README.rst'):
     with open(filename, 'r') as f:
         return f.read()
 
-
 setup(
-    name='mebo',
-    version=mebo.__version__,
-    description='Simple python interface to control the mebo toy robot',
+    name=about['__title__'],
+    version=about['__version__'],
+    description=about['__description__'],
     long_description=readme(),
-    author='Cameron Lane',
-    author_email='crlane@adamanteus.com',
-    url='https://github.com/crlane/python-mebo',
+    author=about['__author__'],
+    author_email=about['__author_email__'],
+    url=about['__url__'],
+    package_data={'': ['LICENSE.md']},
     packages=find_packages(exclude=['contrib', 'docs', 'test*']),
     install_requires=find_requirements(),
-    license='MIT',
+    license=about['__license__'],
     extras_require={
         'testing': find_requirements('test_requirements.txt'),
         'development': ['ipython', 'ipdb']
@@ -38,7 +42,7 @@ setup(
         #   3 - Alpha
         #   4 - Beta
         #   5 - Production/Stable
-        'Development Status :: 3 - Alpha',
+        'Development Status :: 4 - Beta',
 
         # Indicate who your project is intended for
         'Intended Audience :: Education',

@@ -11,10 +11,6 @@ python-mebo's documentation!
    :maxdepth: 2
    :caption: Contents: n 5, 2019d
 
-
-
-mebo
-----
 .. automodule:: mebo
 
 mebo.robot

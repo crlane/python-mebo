@@ -26,3 +26,9 @@ Makefile
 Session.vim
 .netrwhist
 *~
+
+__pycache__
+*.pyc
+
+
+docs/_build
