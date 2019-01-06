@@ -1,4 +1,0 @@
-FROM crlane/python-mebo
-
-RUN pip install ipython
-ENTRYPOINT ipython

@@ -26,3 +26,11 @@ Makefile
 Session.vim
 .netrwhist
 *~
+
+# python generated files
+*.pyc
+**/*/__pycache__
+**/*.pyc
+
+docs/_build
+*.pcap

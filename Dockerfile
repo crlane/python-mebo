@@ -1,4 +1,4 @@
-FROM python:3.6
+FROM python:3.7.1
 
 ADD . /opt/src/
 WORKDIR /opt/src

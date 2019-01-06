@@ -1,22 +1,23 @@
+"""Exceptions for the mebo robot"""
 class MeboError(Exception):
-    pass
+    """General Error for Mebo"""
 
 
 class MeboCommandError(MeboError):
-    pass
+    """Exception raised when a command is incorrect"""
 
 
 class MeboRequestError(MeboError):
-    pass
+    """Exception raised when a request is not accepted by Mebo command server"""
 
 
 class MeboConnectionError(MeboError):
-    pass
+    """Exception raised when connection to mebo fails"""
 
 
 class MeboConfigurationError(MeboError):
-    pass
+    """Exception raised when a Mebo misconfiguration is detected"""
 
 
 class MeboDiscoveryError(MeboError):
-    pass
+    """Exception raised when unable to autodiscover mebo on the LAN"""
