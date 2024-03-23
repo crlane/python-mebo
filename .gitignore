@@ -1,2 +1,5 @@
+!.gitignore
+!.github
+!.pre-commit-config.yaml
 *.pcap
 ./docs/_build
