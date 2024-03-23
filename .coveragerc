@@ -1,6 +1,6 @@
 [run]
-include = */mebo/*
-omit = */*/test/*
+include = ./src/mebo/*
+omit = ./tests/*
 
 [report]
 # Regexes for lines to exclude from consideration

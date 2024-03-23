@@ -1,6 +1,5 @@
 """Classes and methods for working with the physical Mebo robot"""
 import logging
-import socket
 import sys
 import time
 from abc import ABC
@@ -8,7 +7,6 @@ from collections import namedtuple
 from functools import partial
 from ipaddress import (
     AddressValueError,
-    IPv4Network,
     IPv4Address
 )
 
@@ -20,7 +18,11 @@ from requests.exceptions import (
     HTTPError
 )
 
-from zeroconf import ServiceBrowser, Zeroconf
+from zeroconf import (
+    ServiceBrowser,
+    Zeroconf,
+    IPVersion
+)
 
 from .exceptions import (
     MeboCommandError,
@@ -35,6 +37,7 @@ from mebo.stream.session import (
 )
 
 
+# TODO: set up better logging
 logging.getLogger(__name__)
 logging.basicConfig(stream=sys.stdout, level=logging.DEBUG)
 
@@ -49,24 +52,24 @@ SOUTH = 's'
 SOUTH_WEST = 'sw'
 WEST = 'w'
 NORTH_WEST = 'nw'
-DIRECTIONS = {NORTH, NORTH_EAST, EAST, SOUTH_EAST, SOUTH, SOUTH_WEST, WEST, NORTH_WEST}
+DIRECTIONS = [
+    NORTH,
+    NORTH_EAST,
+    EAST,
+    SOUTH_EAST,
+    SOUTH,
+    SOUTH_WEST,
+    WEST,
+    NORTH_WEST
+]
 
-
-class _MeboMDNSListener:
-
-    def remove_service(self, zeroconf, type, name):
-        logging.debug("Service %s removed", name)
-
-    def add_service(self, zeroconf, type, name):
-        info = zeroconf.get_service_info(type, name)
-        logging.debug("Service %s added, service info: %s", name, info)
 
 
 class ComponentFactory:
     """Factory class for generating classes of components"""
 
     @classmethod
-    def _from_parent(cls, name, **actions):
+    def build(cls, name, **actions):
         """Generates a class of the given type as a subclass of component
 
         :param name: Name of the generated class
@@ -75,7 +78,7 @@ class ComponentFactory:
         :type actions: dict
         """
         cls = type(name, (Component,), actions)
-        cls.__doc__ = f"""{name.upper()} Component"""
+        cls.__doc__ = f"""Mebo {name.upper()} Component"""
         return cls(actions=actions.keys())
 
 
@@ -92,33 +95,40 @@ class Component(ABC):
 class Mebo:
     """Mebo represents a single physical robot"""
 
-    # port used by mebo to broadcast its presence
-    BROADCAST_PORT = 51110
-
     # port used to establish media (RTSP) sessions
     RTSP_PORT = 6667
 
-    def __init__(self, ip=None, auto_connect=False):
-        """Initializes a Mebo robot object and establishes an http connection
+    def __init__(self, ip=None, autoconnect=True):
+        """Initializes a Mebo robot object and establishes an http connection to the robot
 
-        If no ip or network is supplied, then we will autodiscover the mebo using mDNS.
+        If `autoconnect` is True (default), then we will autodiscover the robot using mDNS.
+        Alternatively, if autoconnect is False and `ip` is set to a valid IPV4Address, we will attempt to connect using that IP.
+        If `ip` is not a valid IPv4 Address and autoconnect is False, it is error.
 
         :param ip: IPv4 address of the robot as a string.
         :type ip: str
-        :param auto_connect: if True, will autodiscover and connect at object creation time
-        :type auto_connect: bool
+        :param autoconnect: if True, will autodiscover and connect at object creation time
+        :type autoconnect: bool
 
         >>> m = Mebo()
-        >>> m.connect()
-        >>> m2 = Mebo(auto_connect=True)
+        >>> assert m.is_connected
         """
+        # TODO: I don't think the HTTP server on Mebo supports long lived connections
+        # so we're not really getting anything from this. Maybe just use `request.get` instead?
         self._session = Session()
         self._ip = None
+        self._mac = None
+        # all mebos use this as their mDNS domain. Typically the robot 
+        # will be named Camera-{mac_address}._camer._tcp.local"
+        self._mdns_domain = "_camera._tcp.local."
+        self._mdns_name = None
+        
+        self._move_directions = None
 
-        if ip:
+        if autoconnect:
+            self._discover_via_mdns()
+        else:
             self.ip = ip
-        elif auto_connect:
-            self.connect()
 
         self._arm = None
         self._wrist = None
@@ -128,14 +138,11 @@ class Mebo:
         self._rtsp_session = None
 
     @property
-    def endpoint(self):
-        return 'http://{}'.format(self.ip)
+    def ip(self) -> IPv4Address:
+        """The IPv4Address of the robot on the LAN
 
-    @property
-    def ip(self):
-        """The IP of the robot on the LAN
-
-        This value is either provided explicitly at creation time or autodiscovered via mDNS
+        This value is either provided explicitly at creation time or autodiscovered via mDNS.
+        A valid Mebo object always has this property
         """
         if self._ip is None:
             raise MeboConfigurationError('No configured or discovered value for ip address')
@@ -147,7 +154,44 @@ class Mebo:
             addr = IPv4Address(value)
             self._ip = addr
         except AddressValueError:
-            raise MeboConfigurationError(f'Value {addr} set for IP is invalid IPv4 Address')
+            raise MeboConfigurationError(f'{value} is not a valid IPv4Address')
+
+    @property
+    def mdns_name(self):
+        """If Mebo is disocered through mDNS, the .local hostname of the robot.
+        None otherwise"""
+        return self._mdns_name
+            
+    @mdns_name.setter
+    def mdns_name(self, name):
+        if name.endswith(self._mdns_domain):
+            self._mdns_name = name
+        raise MeboConfigurationError(f'Local domain name should end in {self._mdns_domain}') 
+
+
+    @property
+    def endpoint(self):
+        """HTTP Endpoint serving the Mebo control API"""
+        if self._mdns_name:
+            return f'http://{self._mdns_name}'
+        return f'http://{self.ip}'
+
+
+    @property
+    def is_connected(self):
+        """
+        True if the self.ip is a valid IPv4Address and it's possible to grab the version via HTTP.
+        False otherwise, including in the case of an HTTP or connection Error
+
+        :raises: :class:`mebo.exceptions.MeboDiscoveryError` when a mDNS discovery fails
+        :raises: :class:`mebo.exceptions.MeboConnectionError` when a TCP ConnectionError or HTTPError occurs
+        """
+        logging.debug(f'Connecting to Mebo at {self.ip}')
+        try:
+            return self.ip and self.version is not None
+        except (ConnectionError, HTTPError, MeboConfigurationError) as e:
+            raise MeboConnectionError(f"Error connecting to Mebo: {e}") 
+
 
     @property
     def media(self):
@@ -162,28 +206,6 @@ class Mebo:
                 user_agent='python-mebo'
             )
         return self._rtsp_session
-
-    # TODO: rip this out, or change it to a hearbeat
-    # listener which gets established, this has nothing to do with discovery
-    # instead, use mDNS
-    def _get_broadcast(self, address, timeout=10):
-        """ Attempts to receive the UDP broadcast signal from Mebo
-        on the supplied address. Raises an exception if no data is received
-        before 'timeout' seconds.
-
-        :param address: the broadcast address to bind
-        :param timeout: how long the socket should wait without receiving data before raising socket.timeout
-
-        :returns: A Broadcast object that containing the source IP, port, and data received.
-        :raises: `socket.timeout` if no data is received before `timeout` seconds
-        """
-        logging.debug(f"reading from: {address}:{Mebo.BROADCAST_PORT}")
-        with socket.socket(socket.AF_INET, socket.SOCK_DGRAM) as s:
-            s.bind((address, Mebo.BROADCAST_PORT))
-            s.settimeout(timeout)
-            data, source = s.recvfrom(4096)
-            logging.debug(f"Data received: {data}:{source}")
-            return Broadcast(source[0], source[1], data)
 
     def _setup_video_stream(self):
         self._request(req='feedback_channel_init')
@@ -207,20 +229,22 @@ class Mebo:
     def _get_stream(self, address, timeout=10):
         pass
 
-    def _get_mdns(self, key="_camera._tcp.local."):
-        try:
-            zeroconf = Zeroconf()
-            listener = _MeboMDNSListener()
-            browser = ServiceBrowser(zeroconf, key, listener)
-            time.sleep(1)
-            for name, record in browser.services.items():
-                info = zeroconf.get_service_info(record.key, record.alias)
-                # note: the library we're using keeps these keys and values as bytes
-                return info.properties[b'ip'].decode('ascii')
-        finally:
-            zeroconf.close()
 
-    def _discover(self):
+    def _add_service(self, zeroconf, service_type, state_change, name):
+        # TODO: this is a problem with multiple robots on the network because
+        # it kills the connection
+        info = zeroconf.get_service_info(service_type, name)
+        logging.debug("(%s): %s found at %s", state_change, name, info.parsed_addresses())
+        if name.endswith(self._mdns_domain):
+            service_props = {k.decode('ascii'): v.decode('ascii') for k, v in info.properties.items()}
+            self._mac = ':'.join(''.join(p) for p in zip(service_props['mac'][::2], service_props['mac'][1::2]))
+            self.ip = service_props['ip']
+            self.mdns_name = name
+        else:
+            logging.debug(f"Igoring service {name}")
+
+
+    def _discover_via_mdns(self, timeout=3, tick=0.1):
         """
         Runs the discovery scan to find Mebo on your LAN
 
@@ -228,50 +252,36 @@ class Mebo:
         :raises: `MeboDiscoveryError` if discovery times out or the API probe produces a 40X or 50x status code
         """
         try:
-            logging.debug('Looking for Mebo...')
-            ip = self._get_mdns()
-            return ip
-        except socket.timeout:
+            # Only care about IPV4
+            zeroconf = Zeroconf(ip_version=IPVersion.V4Only)
+            start = time.time()
+            logging.debug('Starting search for Mebo...')
+            with ServiceBrowser(zeroconf, self._mdns_domain, handlers=[self._add_service]):
+                while self._ip is None and time.time()- start < timeout:
+                    logging.debug('Still Looking for Mebo...')
+                    time.sleep(tick)
+            assert self._ip is not None
+            logging.debug("Mebo(mac:%s) is at (%s)->(%s)", self._mac, self._mdns_name, self._ip)
+        except AssertionError:
             raise MeboDiscoveryError(('Unable to locate Mebo on the network.\n'
                                       '\tMake sure it is powered on and connected to LAN.\n'
                                       '\tIt may be necessary to power cycle the Mebo.'))
+        finally:
+            if zeroconf.started:
+                zeroconf.close()
 
-    def connect(self):
-        """Connect to the mebo control server over HTTP
-
-        If no IP exists for the robot already, the IP will be autodiscovered via mDNS. When there is already an IP, that will be used to make a canary request to get the command server software version. If the robot has been previously connected, no request is made at all.
-
-        :raises: :class:`mebo.exceptions.MeboDiscoveryError` when a mDNS discovery fails
-        :raises: :class:`mebo.exceptions.MeboConnectionError` when a TCP ConnectionError or HTTPError occurs
-        """
-        if self._ip is None:
-            self.ip = self._discover()
-            logging.debug(f'Mebo found at {self.ip}')
-        try:
-            version = self.version
-            logging.debug(f'Mebo {version} connected')
-        except (ConnectionError, HTTPError) as e:
-            raise MeboConnectionError(f'Unable to connect to mebo: {e}')
 
     def _request(self, **params):
         """ private function to submit HTTP requests to Mebo's API
 
-        :param params: arguments to pass as query params to the Mebo API. Might
-        also include `need_response`, a kwarg dictating whether the caller
-        requires the response object from the API.
+        :param params: arguments to pass as query params to the Mebo API
 
-        :returns: The `requests.HTTPResponse` object if `need_response` is True, `None` otherwise.
+        :returns: The `requests.HTTPResponse` 
         """
-        try:
-            need_response = params.pop('need_response')
-        except KeyError:
-            # by default, don't return a response
-            need_response = False
         try:
             response = self._session.get(self.endpoint, params=params)
             response.raise_for_status()
-            if need_response:
-                return response
+            return response
         except (ConnectionError, HTTPError) as e:
             raise MeboRequestError(f'Request to Mebo failed: {e}')
 
@@ -281,10 +291,10 @@ class Mebo:
 
         :returns: A dictionary of name to `WirelessNetwork`
 
-        >>> m = Mebo(auto_connect=True)
+        >>> m = Mebo()
         >>> print(m.visible_networks())
         """
-        resp = self._request(req='get_rt_list', need_response=True)
+        resp = self._request(req='get_rt_list')
         et = xmlfromstring(f'{resp.text}')
         visible = {}
         for nw in et.findall('w'):
@@ -294,6 +304,9 @@ class Mebo:
     def add_router(self, auth_type, ssid, password, index=1):
         """
         Save a wireless network to the Mebo's list of routers
+
+        Note that the parameters are passed to the robot as query params, completely in the clear.
+        Take caution if you are on an untrusted network.
         """
         self._request(req='setup_wireless_save', auth=auth_type, ssid=ssid, key=password, index=index)
 
@@ -301,13 +314,14 @@ class Mebo:
         self._request(req='set_scan_timer', value=value)
 
     def restart(self):
+        """ Restarts the Mebo"""
         self._request(req='restart_system')
 
     def set_timer_state(self, value=0):
         self._request(req='set_timer_state', value=value)
 
     def get_wifi_cert(self):
-        resp = self._request(req='get_wifi_cert', need_response=True)
+        resp = self._request(req='get_wifi_cert')
         _, cert_type = resp.text.split(':')
         return cert_type.strip()
 
@@ -320,8 +334,11 @@ class Mebo:
         Wrist Elevation: h_up, h_down
 
         :returns: dictionary of functions to boundary positions
+
+        >>> m = Mebo()
+        >>> m.get_boundary_position()
         """
-        resp = self._request(req='get_boundary_position', need_response=True)
+        resp = self._request(req='get_boundary_position')
         _, key_value_string = [s.strip() for s in resp.text.split(':')]
         return dict((k, int(v)) for k, v in [ks.strip().split('=') for ks in key_value_string.split('&')])
 
@@ -329,36 +346,43 @@ class Mebo:
     def version(self):
         """returns the software version of the robot
 
-        >>> m = Mebo(auto_connect=True)
+        >>> m = Mebo()
         >>> m.version == '03.02.37'
         """
-        if not hasattr(self, '_version') or self._version is None: 
-            resp = self._request(req='get_version', need_response=True)
+        try:
+            resp = self._request(req='get_version')
             _, version = resp.text.split(':')
-            self._version = version.strip()
-        return self._version
+            return version.strip()
+        except MeboRequestError:
+            return None
+
+    @property
+    def move_directions(self):
+        if self._move_directions is None:
+            self._move_directions = dict(zip(DIRECTIONS, [
+                'move_forward',
+                'move_forward_right',
+                'move_right',
+                'move_backward_right',
+                'move_backward',
+                'move_backward_left',
+                'move_left',
+                'move_forward_left',
+            ]))
+        return self._move_directions
 
     def move(self, direction, speed=255, dur=1000):
         """Move the robot in a given direction at a speed for a given duration
 
-        :param direction: map direction to move. 'n', 'ne', 'nw', etc.
+        :param direction: one of eight cardinal directions, from the perspective of the robot: \
+            'n', 'ne', 'e', 'se', 's', 'sw', 'w', 'nw'.
         :param speed: a value in the range [0, 255]. default: 255
         :param dur: number of milliseconds the wheels should spin. default: 1000
         """
-        directions = {
-            NORTH: 'move_forward',
-            NORTH_EAST: 'move_forward_right',
-            EAST: 'move_right',
-            SOUTH_EAST: 'move_backward_right',
-            SOUTH: 'move_backward',
-            SOUTH_WEST: 'move_backward_left',
-            WEST: 'move_left',
-            NORTH_WEST: 'move_forward_left'
-        }
-        direction = directions.get(direction.lower())
+        direction = self.move_directions.get(direction.lower())
         if direction is None:
             raise MeboCommandError(
-                'Direction must be one of the map directions: {}'.format(directions.keys()
+                'Direction must be one of the map directions: {}'.format(self.move_directions.keys()
             ))
         speed = min(speed, 255)
         # there is also a ts keyword that could be passed here.
@@ -382,13 +406,13 @@ class Mebo:
     def claw(self):
         """ The claw component at the end of Mebo's arm
 
-        >>> m = Mebo(auto_connect=True)
+        >>> m = Mebo()
         >>> m.claw.open(dur=1000, **params)
         >>> m.claw.close(dur=400, **params)
         >>> m.claw.stop(**params)
         """
         if self._claw is None:
-            claw = ComponentFactory._from_parent(
+            claw = ComponentFactory.build(
                 'Claw',
                 open=partial(self._request, req='c_open'),
                 close=partial(self._request, req='c_close'),
@@ -416,7 +440,7 @@ class Mebo:
         >>> m.wrist.lift_stop()
         """
         if self._wrist is None:
-            wrist = ComponentFactory._from_parent(
+            wrist = ComponentFactory.build(
                 'Wrist',
                 rotate_right=partial(self._request, req='w_right'),
                 inch_right=partial(self._request, req='inch_w_right'),
@@ -434,7 +458,7 @@ class Mebo:
     def arm(self):
         """The arm component of mebo
 
-        >>> m = Mebo(auto_connect=True)
+        >>> m = Mebo()
         >>> m.arm.up(dur=1000, **params)
         >>> m.arm.down(dur=1000, **params)
         >>> m.arm.stop(**params)
@@ -455,7 +479,7 @@ class Mebo:
         stop.__doc__ = """Stop the arm"""
 
         if self._arm is None:
-            arm = ComponentFactory._from_parent(
+            arm = ComponentFactory.build(
                 'Arm',
                 up=up,
                 down=down,
@@ -467,15 +491,28 @@ class Mebo:
     @property
     def speaker(self):
         """
-        >>> m = Mebo(auto_connect=True)
+        >>> m = Mebo()
         >>> m.speaker.set_volume(value=6)
         >>> m.speaker.get_volume()
         >>> m.speaker.play_sound(**params)
         """
+        set_volume = partial(self._request, req='set_spk_volume')
+        set_volume.__doc__ = """Set the volume of the speaker
+
+        The value passed in to set the volume must be in the range [0, 100]
+        """
+        play_sound = partial(self._request, req='audio_out0')
+        # TODO: how do you change what noise is played?
+        play_sound.__doc__ = """Play one of the stored sounds
+
+        through the speaker. 
+        """
         if self._speaker is None:
-            speaker = ComponentFactory._from_parent(
+            speaker = ComponentFactory.build(
                 'Speaker',
-                set_volume=partial(self._request, req='set_spk_volume'),
-                play_sound=partial(self._request, req='audio_out0'))
+                set_volume=set_volume,
+                play_sound=play_sound
+
+            )
             self._speaker = speaker
         return self._speaker

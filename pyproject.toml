@@ -1,0 +1,67 @@
+[build-system]
+requires = [
+    "hatchling",
+    "wheel",
+    "twine",
+]
+build-backend = "hatchling.build"
+
+[project]
+name = "mebo"
+dynamic = ["version"]
+dependencies = [
+    "requests ~= 2.31.0",
+    "zeroconf ~= 0.131.0",
+]
+
+requires-python = ">=3.6"
+authors = [
+  {name = "Cameron Lane", email = "crlane@adamanteus.com"},
+]
+maintainers = [
+  {name = "Cameron Lane", email = "crlane@adamanteus.com"},
+]
+description = "Simple python library to control the Mebo toy robot"
+readme = "README.rst"
+license = {file = "LICENSE.md"}
+
+keywords = ["mebo", "robot", "education", "toys"]
+classifiers = [
+  "Development Status :: 4 - Beta",
+  "Intended Audience :: Education",
+  "Topic :: Scientific/Engineering :: Human Machine Interfaces",
+  "License :: OSI Approved :: MIT License",
+  "Programming Language :: Python",
+  "Programming Language :: Python :: 3",
+]
+
+[project.optional-dependencies]
+"dev" = [
+    "coverage ~= 7.4.4",
+    "pytest >= 8.1.1",
+    "pytest-cov",
+    "Sphinx ~= 7.2.6",
+    "python-coveralls ~= 2.9.1",
+    "ipdb",
+]
+
+[project.urls]
+Homepage = "https://github.com/crlane/python-mebo"
+Documentation = "https://python-mebo.readthedocs.io/en/latest/"
+Repsoitory = "https://github.com/crlane/python-mebo"
+"Bug Tracker" = "https://github.com/crlane/python-mebo/issues"
+Changelog = "https://github.com/crlane/python-mebo/blob/master/CHANGELOG.md"
+
+
+[tool.pytest.ini_options]
+addopts = "-v -m 'not live_robot' --cov=mebo --cov-report=term-missing --cov-config .coveragerc --strict-markers"
+markers = [
+    "live_robot: marks tests as using a real, physical robot",
+    "media: marks tests that exercise the media functionality",
+]
+
+
+# [tool.hatch.build]
+
+[tool.hatch.version]
+path = "./src/mebo/__version__.py"

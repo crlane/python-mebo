@@ -1,7 +1,5 @@
 """To run these tests: `py.test -m 'live_robot'`"""
 import os
-import logging
-import sys
 import time
 
 import pytest
@@ -14,7 +12,7 @@ os.environ['LOGLEVEL'] = 'debug'
 
 @pytest.fixture(scope='session')
 def live_robot():
-    return Mebo(auto_connect=True)
+    return Mebo()
 
 
 @pytest.mark.live_robot
