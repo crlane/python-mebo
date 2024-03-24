@@ -41,7 +41,7 @@ docs:
 	@docker run --rm -it -w /opt/src/docs ${ORG}/${TEST_IMAGE} make html
 
 live_robot_test:
-	@py.test -m 'live_robot and not media'
+	@py.test -xm 'live_robot and not media and not motion'
 
 # deploy to PyPI, tag the version, and push to dockerhub
 .PHONY: publish

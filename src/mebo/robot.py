@@ -1,6 +1,7 @@
 """Classes and methods for working with the physical Mebo robot"""
 
 import logging
+import os
 import sys
 import time
 from abc import ABC
@@ -29,12 +30,13 @@ from mebo.stream.session import (
 
 
 # TODO: set up better logging
+LOGLEVEL = os.environ.get("LOGLEVEL", "INFO").upper()
 logging.getLogger(__name__)
-logging.basicConfig(stream=sys.stdout, level=logging.DEBUG)
+logging.basicConfig(stream=sys.stdout, level=LOGLEVEL)
 
 Broadcast = namedtuple("Broadcast", ["ip", "port", "data"])
 WirelessNetwork = namedtuple(
-    "WirelessNetwork", ["ssid", "mac", "a", "q", "si", "nl", "ch"]
+    "WirelessNetwork", ["ssid", "mac", "auth", "q", "si", "nl", "channel"]
 )
 
 NORTH = "n"
@@ -151,15 +153,14 @@ class Mebo:
     def mdns_name(self, name):
         if name.endswith(self._mdns_domain):
             self._mdns_name = name
-        raise MeboConfigurationError(
-            f"Local domain name should end in {self._mdns_domain}"
-        )
+        else:
+            raise MeboConfigurationError(
+                f"Local domain name {name} should end in {self._mdns_domain}"
+            )
 
     @property
     def endpoint(self):
         """HTTP Endpoint serving the Mebo control API"""
-        if self._mdns_name:
-            return f"http://{self._mdns_name}"
         return f"http://{self.ip}"
 
     @property
@@ -294,9 +295,8 @@ class Mebo:
         et = xmlfromstring(f"{resp.text}")
         visible = {}
         for nw in et.findall("w"):
-            visible[nw.find("s").text.strip('"')] = WirelessNetwork(
-                *(i.text.strip('"') for i in nw.getchildren())
-            )
+            wlan = WirelessNetwork(*(i.text.strip('"') for i in nw))
+            visible[wlan.ssid] = wlan
         return visible
 
     def add_router(self, auth_type, ssid, password, index=1):

@@ -39,6 +39,7 @@ classifiers = [
 "dev" = [
     "coverage ~= 7.4.4",
     "pytest >= 8.1.1",
+    "pytest-timeout ~= 2.3.1",
     "pytest-cov",
     "Sphinx ~= 7.2.6",
     "python-coveralls ~= 2.9.1",
@@ -57,11 +58,15 @@ Changelog = "https://github.com/crlane/python-mebo/blob/master/CHANGELOG.md"
 
 [tool.pytest.ini_options]
 addopts = "-v -m 'not live_robot' --cov=mebo --cov-report=term-missing --cov-config .coveragerc --strict-markers"
+timeout = 10
 markers = [
     "live_robot: marks tests as using a real, physical robot",
     "media: marks tests that exercise the media functionality",
+    "components: marks tests that exercise arm, wrist, claw",
+    "motion: marks tests that exercise robot motion"
 ]
 
+# [tool.pytest]
 
 # [tool.hatch.build]
 
