@@ -1,5 +1,6 @@
 """Deal with SDP body from the RTSP session creation"""
 
+
 class Media:
     """A media stream"""
 
@@ -12,8 +13,8 @@ class Media:
             setattr(self, k, v)
 
     def __str__(self):
-        profile = self.profile.replace('/', '.')
-        return '_'.join([self.name, profile, self.payload_type])
+        profile = self.profile.replace("/", ".")
+        return "_".join([self.name, profile, self.payload_type])
 
 
 class SDP:
@@ -37,7 +38,7 @@ class SDP:
 
     @staticmethod
     def parse_attribute(description):
-        attrname, value = description.split(':')
+        attrname, value = description.split(":")
         return attrname, value
 
     def __init__(self, raw):
@@ -50,24 +51,24 @@ class SDP:
         body_lines.reverse()
         while body_lines:
             line = body_lines.pop()
-            sdp_code, _, description = line.partition('=')
-            if sdp_code == 'v':
+            sdp_code, _, description = line.partition("=")
+            if sdp_code == "v":
                 self.version = int(description.strip())
-            elif sdp_code == 'o':
+            elif sdp_code == "o":
                 self.originator = description
-            elif sdp_code == 'a':
+            elif sdp_code == "a":
                 attribute, value = SDP.parse_attribute(description)
                 if new_media is None:
                     setattr(self, attribute, value)
                 else:
                     setattr(new_media, attribute, value)
-            elif sdp_code == 't':
+            elif sdp_code == "t":
                 self.time = tuple(map(int, description.split()))
-            elif sdp_code == 's':
+            elif sdp_code == "s":
                 self.name = description.strip()
-            elif sdp_code == 'c':
+            elif sdp_code == "c":
                 self.host_info = description
-            elif sdp_code == 'm':
+            elif sdp_code == "m":
                 if new_media is not None:
                     self.media.append(new_media)
                 new_media = Media(*description.split())

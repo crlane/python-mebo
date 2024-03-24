@@ -7,15 +7,15 @@ def _hash(s):
     return md5(s).hexdigest()
 
 
-def _combine(*args, encoding='utf-8'):
-    return ':'.join(args).encode('utf-8')
+def _combine(*args, encoding="utf-8"):
+    return ":".join(args).encode("utf-8")
 
 
 def ha1(username, realm, password=None):
     if password is None:
-        password = os.getenv('STREAM_PASSWORD')
+        password = os.getenv("STREAM_PASSWORD")
     if not password:
-        raise Exception('supply stream password')
+        raise Exception("supply stream password")
     return _hash(_combine(username, realm, password))
 
 
@@ -24,7 +24,7 @@ def ha2(method, uri):
 
 
 def challenge_response(nonce, username, realm, password, method, uri):
-    """ Calculates the challenge response for digest authentication. Detials are
+    """Calculates the challenge response for digest authentication. Detials are
     available here: https://tools.ietf.org/html/rfc2617
 
     :param nonce: The server generated nonce issued in the challenge response

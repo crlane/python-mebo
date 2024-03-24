@@ -1,4 +1,6 @@
 """Exceptions for the mebo robot"""
+
+
 class MeboError(Exception):
     """General Error for Mebo"""
 

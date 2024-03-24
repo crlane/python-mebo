@@ -27,14 +27,13 @@ logger = logging.getLogger(__name__)
 def get_bits(d, size=32):
     m, M = 0, 2**size - 1
     if not (m <= d <= M):
-        raise ValueError(f'{d} must be in the range [{m},{M}]')
-    binary = f'{d:0>{size}b}'
+        raise ValueError(f"{d} must be in the range [{m},{M}]")
+    binary = f"{d:0>{size}b}"
     assert len(binary) == size
     return {i: digit for i, digit in enumerate(binary)}
 
 
 class NALType:
-
     RESERVED = {0, 30, 31}
     UNIT = set(range(1, 24))
 
@@ -47,10 +46,7 @@ class NALType:
 
     @classmethod
     def supported(cls):
-        return {
-            cls.STAP_A,
-            cls.FU_A
-        }.union(cls.UNIT)
+        return {cls.STAP_A, cls.FU_A}.union(cls.UNIT)
 
     @classmethod
     def unsupported(cls):
@@ -67,7 +63,6 @@ class RTPDecodeError(Exception):
 
 
 class RTPPacket:
-
     def __init__(self, packet):
         self.raw = memoryview(packet)
         self.byte_offset = 0
@@ -128,67 +123,86 @@ class RTPPacket:
         standard_header = self.raw[:12]
         self.byte_offset += 12
 
-        meta, self.timestamp, self.ssrc = struct.unpack('!III', standard_header)
+        meta, self.timestamp, self.ssrc = struct.unpack("!III", standard_header)
         # first 16 bits of the first uint32
         first_16 = meta >> 16
-        self.sequence_number = meta & ((1 << 16) - 1)  # last 16 bits of the first uint32
-        logger.debug('Sequence number: %d, Timestamp: %d, SSRC: %x', self.sequence_number, self.timestamp, self.ssrc)
+        self.sequence_number = meta & (
+            (1 << 16) - 1
+        )  # last 16 bits of the first uint32
+        logger.debug(
+            "Sequence number: %d, Timestamp: %d, SSRC: %x",
+            self.sequence_number,
+            self.timestamp,
+            self.ssrc,
+        )
 
         self.version = first_16 >> 14  # first two bits, 23 == 0x17 == 3 << 14 ==
         if self.version != 2:
-            raise RTPDecodeError(f'Unknown version {self.version} error!')
+            raise RTPDecodeError(f"Unknown version {self.version} error!")
         self.padding = (first_16 >> 13) & 1  # third bit
         self.extension = (first_16 >> 12) & 1  # fourth bit
-        self.contributors = first_16 & ((1 << 4) - 1)   # bits 5-8
+        self.contributors = first_16 & ((1 << 4) - 1)  # bits 5-8
         self.marker = first_16 & (1 << 7)  # bit 9
 
         self.payload_type = first_16 & ((1 << 7) - 1)  # last 7 bits of first two bytes
 
         if self.contributors:
             orig_offset = self.byte_offset
-            self.byte_offset += (4 * self.contributors)
-            struct_mask = ''.join(['!', 'I' * self.contributors])
-            self.contributing_sources = struct.unpack(struct_mask, self.raw[orig_offset: self.byte_offset])
-            logger.debug("CRSC identifiers: %s", [f'{csrc:x}' for csrc in self.contributing_sources])
+            self.byte_offset += 4 * self.contributors
+            struct_mask = "".join(["!", "I" * self.contributors])
+            self.contributing_sources = struct.unpack(
+                struct_mask, self.raw[orig_offset : self.byte_offset]
+            )
+            logger.debug(
+                "CRSC identifiers: %s",
+                [f"{csrc:x}" for csrc in self.contributing_sources],
+            )
 
         if self.extension:
             # these are unsigned 16-bit integers 'H' in struct unpack land
             orig_offset = self.byte_offset
             self.byte_offset += 2
-            self.header_id = struct.unpack('!H', self.raw[orig_offset: self.byte_offset])
+            self.header_id = struct.unpack(
+                "!H", self.raw[orig_offset : self.byte_offset]
+            )
 
             orig_offset = self.byte_offset
             self.byte_offset += 2
-            self.header_length = struct.unpack('!H', self.raw[orig_offset: self.byte_offset])
-            logger.debug('Extended header id (%d) with length %d', self.header_id, self.header_length)
+            self.header_length = struct.unpack(
+                "!H", self.raw[orig_offset : self.byte_offset]
+            )
+            logger.debug(
+                "Extended header id (%d) with length %d",
+                self.header_id,
+                self.header_length,
+            )
 
             orig_offset = self.byte_offset
-            self.byte_offset += (4 * self.header_length)
-            self.header_contents = self.raw[orig_offset: self.byte_offset]
-
+            self.byte_offset += 4 * self.header_length
+            self.header_contents = self.raw[orig_offset : self.byte_offset]
 
     def decode(self, media_type):
         self.parse_header()
-        if media_type == 'video':
+        if media_type == "video":
             return self._decode_video()
-        elif media_type == 'audio':
+        elif media_type == "audio":
             return self._decode_audio()
         else:
-            raise ValueError(f'Unknown sdp media type {media_type}')
+            raise ValueError(f"Unknown sdp media type {media_type}")
 
-    def _decode_audio(self, code='g711a'):
-        """ Writes out everything after the header """
-        return self.raw[self.byte_offset:]
+    def _decode_audio(self, code="g711a"):
+        """Writes out everything after the header"""
+        return self.raw[self.byte_offset :]
 
-    def _decode_video(self, codec='h264', packetization_mode=1):
-        """ This routine takes a UDP packet, i.e. a string of bytes and ..
+    def _decode_video(self, codec="h264", packetization_mode=1):
+        """This routine takes a UDP packet, i.e. a string of bytes and ..
         (a) strips off the RTP header
         (b) adds NAL "stamps" to the packets, so that they are recognized as NAL's
         (c) Concantenates frames
         (d) Returns a packet that can be written to disk as such and that is recognized by stock media players as h264 stream
         """
         # this is the sequence of four bytes that identifies a NAL packet.. must be in front of every NAL packet.
-        startbytes = b'\x00\x00\x00\x01'
+        startbytes = b"\x00\x00\x00\x01"
 
         # OK, all of the header has been consumed.
         # now we enter the NAL packet, as described here:
@@ -244,7 +258,7 @@ class RTPPacket:
         self.fragment_type = self.NAL & 0x1F  # ((1 << 5) - 1)
         self.nlu0 = self.f | self.nri
 
-        logger.debug('F:%d, NRI:%d, Type:%d', self.f, self.nri, self.fragment_type)
+        logger.debug("F:%d, NRI:%d, Type:%d", self.f, self.nri, self.fragment_type)
         # logger.debug('NLU: %d', self.nlu0)
 
         if self.fragment_type in NALType.UNIT:
@@ -253,13 +267,13 @@ class RTPPacket:
             # more reading for example here:
             # http://www.cardinalpeak.com/blog/the-h-264-sequence-parameter-set/
             if self.fragment_type == 1:
-                logger.debug('<<<<< NAL unit type (%d), decoding', self.fragment_type)
+                logger.debug("<<<<< NAL unit type (%d), decoding", self.fragment_type)
             if self.fragment_type == 7:
                 logger.debug(">>>>> SPS packet")
             else:
                 logger.debug(">>>>> PPS packet")
             # .. notice here that we include the NAL starting sequence "startbytes" and the "First byte"
-            return startbytes + self.raw[self.byte_offset:]
+            return startbytes + self.raw[self.byte_offset :]
 
         else:
             self.byte_offset += 1
@@ -274,23 +288,29 @@ class RTPPacket:
         self.nlu1 = second_byte & 0x1F
 
         if self.start:  # OK, this is a first fragment in a movie frame
-            logger.debug('>>>>> first fragment found')
-            self.nlu = bytes([self.nlu0 | self.nlu1])  # Create "[3 NAL UNIT BITS | 5 NAL UNIT BITS]"
+            logger.debug(">>>>> first fragment found")
+            self.nlu = bytes(
+                [self.nlu0 | self.nlu1]
+            )  # Create "[3 NAL UNIT BITS | 5 NAL UNIT BITS]"
             # possibly decode bytes as latin-1?
-            head = startbytes + self.nlu   # .. add the NAL starting sequence
+            head = startbytes + self.nlu  # .. add the NAL starting sequence
             self.byte_offset += 1
         else:
             if self.end:
-                logger.debug('<<<<< last fragment found')
+                logger.debug("<<<<< last fragment found")
             else:
-                logger.debug('<<<<< intermediate fragment found')
+                logger.debug("<<<<< intermediate fragment found")
             head = bytes()
             self.byte_offset += 1
 
         if self.fragment_type not in NALType.supported():
-            raise RTPDecodeError(f'Got unsupported NALType {self.fragment_type} for packetization-mode 1')
+            raise RTPDecodeError(
+                f"Got unsupported NALType {self.fragment_type} for packetization-mode 1"
+            )
         elif self.fragment_type == NALType.STAP_A:
-            logger.debug('<<<<< STAP_A NALType: (%d), decoding', self.fragment_type)
-        elif self.fragment_type == NALType.FU_A:  # This code only handles "Type"  =  28, i.e. "FU-A"
-            logger.debug('<<<<< FU_A NALType: (%d), decoding', self.fragment_type)
-        return head + self.raw[self.byte_offset:]
+            logger.debug("<<<<< STAP_A NALType: (%d), decoding", self.fragment_type)
+        elif (
+            self.fragment_type == NALType.FU_A
+        ):  # This code only handles "Type"  =  28, i.e. "FU-A"
+            logger.debug("<<<<< FU_A NALType: (%d), decoding", self.fragment_type)
+        return head + self.raw[self.byte_offset :]
