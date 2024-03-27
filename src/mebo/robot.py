@@ -122,6 +122,12 @@ class Mebo:
 
         self._rtsp_session = None
 
+    def __enter__(self):
+        return self
+
+    def __exit__(self, exc_type, exc_value, traceback):
+        self._session.close()
+
     @property
     def ip(self) -> IPv4Address:
         """The IPv4Address of the robot on the LAN
@@ -155,7 +161,7 @@ class Mebo:
             self._mdns_name = name
         else:
             raise MeboConfigurationError(
-                f"Local domain name {name} should end in {self._mdns_domain}"
+                f"Local domain name ({name}) should end in {self._mdns_domain}"
             )
 
     @property
@@ -360,7 +366,23 @@ class Mebo:
             resp = self._request(req="get_version")
             _, version = resp.text.split(":")
             return version.strip()
-        except MeboRequestError:
+        except MeboRequestError as e:
+            logging.debug(f"Error requesting model: {e}")
+            return None
+
+    @property
+    def model(self):
+        """returns the robot model. For this version, always 
+        expected to be `001`
+        >>> m = Mebo()
+        >>> m.model == '001'
+        """
+        try:
+            resp = self._request(req="get_model")
+            _, model = resp.text.split(":")
+            return model.strip()
+        except MeboRequestError as e:
+            logging.debug(f"Error requesting model: {e}")
             return None
 
     @property
